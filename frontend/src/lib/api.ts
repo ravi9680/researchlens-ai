@@ -11,20 +11,31 @@ export const api = {
   token: localStorage.getItem("rl_token") || "",
   setToken(t: string) { this.token = t; localStorage.setItem("rl_token", t); },
   h(): HeadersInit { const t = this.token || localStorage.getItem("rl_token") || ""; return { ...(t ? { Authorization: `Bearer ${t}` } : {}) }; },
+  // fetch with auth; on 401, mint a fresh guest identity once and retry
+  async req(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
+    const r = await fetch(`${BASE}${path}`, { ...init, headers: { ...(init.headers || {}), ...api.h() } });
+    if (r.status === 401 && retry) {
+      try {
+        const g: any = await api.guestLogin();
+        if (g?.token) { api.setToken(g.token); return api.req(path, init, false); }
+      } catch { /* fall through to original 401 */ }
+    }
+    return r;
+  },
   health: () => fetch(`${BASE}/api/health`).then(j),
   engine: () => fetch(`${BASE}/api/engine`).then(j),
   demoLogin: () => fetch(`${BASE}/api/auth/demo`, { method: "POST" }).then(j),
   guestLogin: () => fetch(`${BASE}/api/auth/guest`, { method: "POST" }).then(j),
-  dashboard: () => fetch(`${BASE}/api/dashboard/stats`, { headers: api.h() }).then(j),
+  dashboard: () => api.req(`/api/dashboard/stats`).then(j),
   upload: async (f: File) => {
     const fd = new FormData(); fd.append("file", f);
-    const r = await fetch(`${BASE}/api/upload`, { method: "POST", headers: api.h(), body: fd });
+    const r = await api.req(`/api/upload`, { method: "POST", body: fd });
     return j<{ documentId: string }>(r);
   },
-  docStatus: (id: string) => fetch(`${BASE}/api/documents/${id}/status`, { headers: api.h() }).then(j),
-  report: (id: string) => fetch(`${BASE}/api/documents/${id}/report`, { headers: api.h() }).then(j),
-  docs: () => fetch(`${BASE}/api/documents`, { headers: api.h() }).then(j),
-  removeDoc: (id: string) => fetch(`${BASE}/api/documents/${id}`, { method: "DELETE", headers: api.h() }).then(j),
+  docStatus: (id: string) => api.req(`/api/documents/${id}/status`).then(j),
+  report: (id: string) => api.req(`/api/documents/${id}/report`).then(j),
+  docs: () => api.req(`/api/documents`).then(j),
+  removeDoc: (id: string) => api.req(`/api/documents/${id}`, { method: "DELETE" }).then(j),
   papers: (p: Record<string, string> = {}) => fetch(`${BASE}/api/papers?` + new URLSearchParams(p)).then(j),
   paper: (id: string) => fetch(`${BASE}/api/papers/${id}`).then(j),
   compare: (ids: string[]) => fetch(`${BASE}/api/papers/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }).then(j),
