@@ -1,0 +1,26 @@
+# One-click Render deploy: https://dashboard.render.com/blueprint
+# (connect your GitHub repo containing this file, Render does the rest)
+services:
+  - type: web
+    name: researchlens
+    runtime: node
+    plan: free
+    buildCommand: >-
+      make -C algorithm_engine &&
+      npm --prefix backend install &&
+      npm --prefix frontend install &&
+      npm --prefix backend run migrate &&
+      npm --prefix backend run seed &&
+      npm --prefix frontend run build
+    startCommand: npm --prefix backend run start
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: EMBEDDING_PROVIDER
+        value: local
+      - key: JWT_SECRET
+        generateValue: true
+# NOTE (free tier): filesystem is ephemeral — uploaded papers and the SQLite
+# DB reset on restart/redeploy (demo seed re-runs each deploy, so the app
+# always boots with data). For persistence use Render Postgres + the DDL in
+# backend/migrations/postgres.sql (see docs/DATABASE.md portability notes).

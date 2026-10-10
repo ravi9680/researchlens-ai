@@ -1,0 +1,22 @@
+Phishing URL Detection with Machine Learning: An Evaluation Study
+
+Abstract
+This paper studies phishing URL detection using lexical features and gradient boosting. We evaluate XGBoost and random forest classifiers on phishing corpora with TF-IDF features, URL length, subdomain statistics, and HTTPS signals. Experiments use time-based splits to account for concept drift. Results indicate strong precision-recall trade-offs, with limitations around adversarial obfuscation and short-URL services.
+
+Introduction
+Phishing remains a major threat. Prior work explores blacklists, heuristics, and machine learning. Our contribution is a controlled comparison with careful evaluation methodology.
+
+Related Work
+Prior research covers SVM baselines, character-level CNNs, and longitudinal drift measurement.
+
+Methodology
+We extract lexical URL features and train XGBoost with cross-validation. Evaluation reports accuracy, precision, recall, F1, and PR-AUC.
+
+Results
+Gradient boosting achieves 96.1% accuracy in our local split. Ablations show subdomain features contribute most.
+
+Discussion
+Results align with existing literature on lexical baselines. Limitations include private data splits and missing real-time latency analysis.
+
+Conclusion
+Lexical gradient boosting remains a strong baseline; future work should test cross-dataset generalization and hybrid lexical-semantic retrieval.
