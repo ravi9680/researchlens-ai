@@ -15,6 +15,7 @@ import { Explorer, PaperDetails, Compare } from "./pages/Explore";
 import { Chat, LitReview } from "./pages/ChatReview";
 import { Trends, CitationGraph, Knowledge, Admin } from "./pages/Analytics";
 import { Algorithms, Settings } from "./pages/AlgorithmsSettings";
+import { Auth } from "./pages/Auth";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -40,6 +41,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="admin" element={<Admin />} />
             <Route path="algorithms" element={<Algorithms />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="auth" element={<Auth />} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

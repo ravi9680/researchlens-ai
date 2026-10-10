@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { LogOut, User as UserIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { LayoutDashboard, Upload, FlaskConical, MessagesSquare, TrendingUp, Network, Database, Settings, Sparkles, BookOpen, GitCompare, Library, Moon, Sun, Cpu } from "lucide-react";
 
@@ -21,13 +22,14 @@ const LINKS = [
 export function Layout() {
   const nav = useNavigate();
   const [dark, setDark] = useState(document.documentElement.classList.contains("dark"));
+  const [me, setMe] = useState<any>(null);
   useEffect(() => {
-    // every visitor without a token gets a FRESH isolated guest account —
-    // uploads/analyses are private to that browser only
+    const load = () => api.me().then(setMe).catch(() => setMe(null));
     if (!localStorage.getItem("rl_token")) {
-      api.guestLogin().then((d: any) => d.token && api.setToken(d.token)).catch(() => {});
+      api.guestLogin().then((d: any) => d.token && api.setToken(d.token)).then(load).catch(() => {});
     } else {
       api.token = localStorage.getItem("rl_token") || "";
+      load();
     }
   }, []);
   return (
@@ -40,6 +42,14 @@ export function Layout() {
           </button>
           <span className="badge hidden shrink-0 bg-amber-100 text-amber-800 min-[420px]:inline-flex dark:bg-amber-400/10 dark:text-amber-300">DEMO DATA</span>
           <div className="ml-auto flex items-center gap-2">
+            {me && !me.guest ? (
+              <span className="badge hidden bg-emerald-500/15 text-emerald-600 min-[500px]:inline-flex" title={me.email}><UserIcon size={13} /> {(me.name || me.email || "").slice(0, 18)}</span>
+            ) : (
+              <button className="btn border border-slate-300 text-xs sm:text-sm dark:border-white/15" onClick={() => nav("/app/auth")}><UserIcon size={15} /> Login</button>
+            )}
+            {me && !me.guest && (
+              <button className="btn" title="Logout" onClick={() => api.logout()} aria-label="logout"><LogOut size={16} /></button>
+            )}
             <button className="btn" onClick={() => { const d = !dark; setDark(d); document.documentElement.classList.toggle("dark", d); }} aria-label="theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
             <button className="btn-primary whitespace-nowrap text-xs sm:text-sm" onClick={() => nav("/app/upload")}><Upload size={15} /> <span className="hidden sm:inline">Analyze paper</span><span className="sm:hidden">Analyze</span></button>
           </div>

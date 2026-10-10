@@ -26,6 +26,10 @@ export const api = {
   engine: () => fetch(`${BASE}/api/engine`).then(j),
   demoLogin: () => fetch(`${BASE}/api/auth/demo`, { method: "POST" }).then(j),
   guestLogin: () => fetch(`${BASE}/api/auth/guest`, { method: "POST" }).then(j),
+  login: (email: string, password: string) => fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, guestToken: localStorage.getItem("rl_token") || undefined }) }).then(j),
+  register: (email: string, password: string, name: string) => fetch(`${BASE}/api/auth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, name, guestToken: localStorage.getItem("rl_token") || undefined }) }).then(j),
+  me: () => api.req(`/api/auth/me`).then(j),
+  logout: () => { api.token = ""; localStorage.removeItem("rl_token"); location.reload(); },
   dashboard: () => api.req(`/api/dashboard/stats`).then(j),
   upload: async (f: File) => {
     const fd = new FormData(); fd.append("file", f);

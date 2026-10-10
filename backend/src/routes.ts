@@ -31,20 +31,41 @@ export function auth(req: any, res: any, next: any) {
 }
 
 router.post("/auth/register", async (req, res) => {
-  const s = z.object({ email: z.string().email(), password: z.string().min(6), name: z.string().default("") }).safeParse(req.body);
+  const s = z.object({ email: z.string().email(), password: z.string().min(6), name: z.string().default(""), guestToken: z.string().optional() }).safeParse(req.body);
   if (!s.success) return res.status(400).json({ error: "Invalid input" });
   if (get("SELECT id FROM users WHERE email = ?", [s.data.email])) return res.status(409).json({ error: "Email exists" });
   const id = randomUUID();
   run("INSERT INTO users (id, email, password_hash, name) VALUES (?,?,?,?)", [id, s.data.email, await bcrypt.hash(s.data.password, 10), s.data.name]);
+  mergeGuestDocs(s.data.guestToken, id);
   const u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
   res.json({ token: sign(u), user: { id, email: u.email, name: u.name } });
 });
 
 router.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password, guestToken } = req.body || {};
   const u = get<any>("SELECT * FROM users WHERE email = ?", [email || ""]);
   if (!u || !(await bcrypt.compare(String(password || ""), u.password_hash))) return res.status(401).json({ error: "Invalid credentials" });
+  mergeGuestDocs(guestToken, u.id);
   res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name } });
+});
+
+// move an anonymous guest's uploads into a real account (history follows login)
+function mergeGuestDocs(guestToken: string | undefined, targetId: string) {
+  try {
+    if (!guestToken) return;
+    const g: any = jwt.verify(guestToken, config.jwtSecret);
+    if (!g?.id || g.id === targetId) return;
+    const gu = get<any>("SELECT * FROM users WHERE id = ?", [g.id]);
+    if (!gu || gu.role !== "user" || !String(gu.email || "").endsWith("@researchlens.local")) return;
+    run("UPDATE documents SET user_id = ? WHERE user_id = ?", [targetId, g.id]);
+    run("DELETE FROM users WHERE id = ?", [g.id]);
+  } catch { /* bad/expired guest token — ignore */ }
+}
+
+router.get("/auth/me", auth, (req: any, res) => {
+  const u = get<any>("SELECT id, email, name, role FROM users WHERE id = ?", [(req as any).user.id]);
+  if (!u) return res.status(404).json({ error: "Not found" });
+  res.json({ ...u, guest: String(u.email || "").endsWith("@researchlens.local") });
 });
 
 // one-click demo login (no password needed in DEMO_MODE)

@@ -55,7 +55,7 @@ export function Settings() {
         <p className="mt-1 text-sm"><b>C engine:</b> {(q.data as any)?.available ? "available" : "unavailable (JS fallback)"}</p>
         <p className="mt-1 text-sm"><b>Database:</b> SQLite (dev) · Postgres + pgvector schema in <code>backend/migrations/postgres.sql</code></p>
         <p className="mt-3 text-xs text-slate-500">Never put API keys in frontend code. AI-writing detection is probabilistic and can produce false positives/negatives — never proof of authorship. Semantic similarity is not plagiarism. Demo papers are synthetic.</p>
-        <button className="btn mt-3 border border-slate-300 dark:border-white/15" onClick={() => { localStorage.removeItem("rl_token"); location.reload(); }}>Reset demo session</button>
+        <button className="btn mt-3 border border-slate-300 dark:border-white/15" onClick={() => { api.token = ""; localStorage.removeItem("rl_token"); location.reload(); }}>Logout (fresh guest on next visit)</button>
       </Card>
     </div>
   );
