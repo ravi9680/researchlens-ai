@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 import { LayoutDashboard, Upload, FlaskConical, MessagesSquare, TrendingUp, Network, Database, Settings, Sparkles, BookOpen, GitCompare, Library, Moon, Sun, Cpu } from "lucide-react";
 
 const LINKS = [
@@ -21,8 +22,12 @@ export function Layout() {
   const nav = useNavigate();
   const [dark, setDark] = useState(document.documentElement.classList.contains("dark"));
   useEffect(() => {
+    // every visitor without a token gets a FRESH isolated guest account —
+    // uploads/analyses are private to that browser only
     if (!localStorage.getItem("rl_token")) {
-      fetch("/api/auth/demo", { method: "POST" }).then((r) => r.json()).then((d) => d.token && localStorage.setItem("rl_token", d.token)).catch(() => {});
+      api.guestLogin().then((d: any) => d.token && api.setToken(d.token)).catch(() => {});
+    } else {
+      api.token = localStorage.getItem("rl_token") || "";
     }
   }, []);
   return (

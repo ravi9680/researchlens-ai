@@ -5,9 +5,12 @@ Base `/api`. Errors are `{ error }` with safe messages.
 | Method | Path | Notes |
 |---|---|---|
 | GET | /health, /engine, /algorithms | status, C-engine info, pipeline transparency |
-| POST | /auth/register, /auth/login, /auth/demo | JWT (7d); demo one-click |
+| POST | /auth/register, /auth/login | JWT (7d); private accounts |
+| POST | /auth/demo | Shared demo identity (backward compat) |
+| POST | /auth/guest | **Fresh isolated guest per call — every link visitor gets a private space** |
 | POST | /upload (multipart `file`) | PDF/DOCX/TXT ≤25MB → `{ documentId }`, async analysis |
-| GET | /documents, /documents/:id/status, /documents/:id/report | list, poll stage/progress, full report (409 until DONE) |
+| GET | /documents, /documents/:id/status, /documents/:id/report | **auth required; strictly own docs only (else 404);** full report (409 until DONE) |
+| DELETE | /documents/:id | Delete own analysis |
 | GET | /papers?search&topic&sort&page | sort: relevance/year/citations |
 | GET | /papers/:id | + authors, chunk excerpts |
 | POST | /papers/compare `{ids[]}` | ≤4 papers, extractive table |

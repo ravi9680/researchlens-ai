@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), filename TEXT NOT NULL, mime TEXT DEFAULT '',
   size_bytes BIGINT DEFAULT 0, status TEXT DEFAULT 'queued', progress INT DEFAULT 0, stage TEXT DEFAULT 'QUEUED',
   title TEXT DEFAULT '', full_text TEXT DEFAULT '', report_json JSONB DEFAULT '{}', error TEXT DEFAULT '',
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS similarity_results (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), document_id UUID REFERENCES documents(id) ON DELETE CASCADE, paper_id UUID REFERENCES papers(id) ON DELETE CASCADE, score FLOAT NOT NULL, section_scores JSONB DEFAULT '{}', matches_json JSONB DEFAULT '[]');

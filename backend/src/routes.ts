@@ -58,6 +58,23 @@ router.post("/auth/demo", async (_req, res) => {
   res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name } });
 });
 
+// isolated guest login — every visitor gets a FRESH private account, so one
+// person's uploads/analyses are never visible to another link visitor.
+router.post("/auth/guest", async (_req, res) => {
+  const id = randomUUID();
+  const email = `guest-${id}@researchlens.local`;
+  run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)",
+    [id, email, await bcrypt.hash(randomUUID(), 8), "Guest Researcher", "user"]);
+  const u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
+  res.json({ token: sign(u), user: { id: u.id, name: u.name } });
+});
+
+// ownership helper: 404 for missing OR not-yours (no existence oracle)
+function ownDoc(req: any, id: string) {
+  const uid = (req as any).user.id;
+  return get<any>("SELECT * FROM documents WHERE id = ? AND user_id = ?", [id, uid]);
+}
+
 /* ---------- engine / health ---------- */
 router.get("/health", (_req, res) => res.json({ ok: true, demoMode: config.demoMode, time: new Date().toISOString() }));
 router.get("/engine", (_req, res) => res.json({ ...cEngineInfo(), semantic: "IDF-weighted hashed embeddings (384-d, offline) or OpenAI text-embedding-3-small via EMBEDDING_PROVIDER; pgvector HNSW in prod", note: "C = lexical; embeddings = semantic. Never conflated." }));
@@ -74,31 +91,39 @@ const upload = multer({
   },
 });
 
-router.post("/upload", upload.single("file"), async (req, res) => {
+router.post("/upload", auth, upload.single("file"), async (req: any, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
     const id = randomUUID();
-    run("INSERT INTO documents (id, filename, mime, size_bytes, status, stage, progress) VALUES (?,?,?,?,?,?,?)",
-      [id, req.file.originalname, req.file.mimetype, req.file.size, "processing", "QUEUED", 2]);
+    run("INSERT INTO documents (id, user_id, filename, mime, size_bytes, status, stage, progress) VALUES (?,?,?,?,?,?,?,?)",
+      [id, req.user.id, req.file.originalname, req.file.mimetype, req.file.size, "processing", "QUEUED", 2]);
     const fp = req.file.path;
     runAnalysis(id, fp, req.file.mimetype, req.file.originalname); // async, polled via status
     res.json({ documentId: id, status: "processing" });
   } catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
-router.get("/documents", (_req, res) => {
-  res.json(all("SELECT id, filename, title, status, stage, progress, created_at FROM documents ORDER BY created_at DESC LIMIT 50"));
+router.get("/documents", auth, (req: any, res) => {
+  res.json(all("SELECT id, filename, title, status, stage, progress, created_at FROM documents WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", [req.user.id]));
 });
-router.get("/documents/:id/status", (req, res) => {
-  const d = get<any>("SELECT id, status, stage, progress, error, title FROM documents WHERE id = ?", [req.params.id]);
+router.get("/documents/:id/status", auth, (req: any, res) => {
+  const d = ownDoc(req, req.params.id);
   if (!d) return res.status(404).json({ error: "Not found" });
-  res.json({ ...d, done: d.stage === "DONE", failed: d.stage === "FAILED" });
+  res.json({ id: d.id, status: d.status, stage: d.stage, progress: d.progress, error: d.error, title: d.title, done: d.stage === "DONE", failed: d.stage === "FAILED" });
 });
-router.get("/documents/:id/report", (req, res) => {
-  const r = getReport(req.params.id);
+router.get("/documents/:id/report", auth, (req: any, res) => {
+  const r = ownDoc(req, req.params.id);
   if (!r) return res.status(404).json({ error: "Not found" });
   if (r.stage !== "DONE") return res.status(409).json({ error: "Analysis not complete", stage: r.stage, progress: r.progress });
-  res.json(r.report);
+  try { res.json(JSON.parse(r.report_json || "{}")); }
+  catch { res.status(500).json({ error: "Corrupt report" }); }
+});
+router.delete("/documents/:id", auth, (req: any, res) => {
+  const d = ownDoc(req, req.params.id);
+  if (!d) return res.status(404).json({ error: "Not found" });
+  run("DELETE FROM similarity_results WHERE document_id = ?", [req.params.id]);
+  run("DELETE FROM documents WHERE id = ?", [req.params.id]);
+  res.json({ deleted: req.params.id });
 });
 
 /* ---------- papers ---------- */
@@ -194,10 +219,20 @@ router.get("/ingest/:id", (req, res) => {
 });
 
 /* ---------- dashboard ---------- */
-router.get("/dashboard/stats", (_req, res) => {
+router.get("/dashboard/stats", (req, res) => {
   const papers = all<any>("SELECT * FROM papers");
-  const docs = all<any>("SELECT * FROM documents");
-  const sims = all<any>("SELECT score FROM similarity_results");
+  // scope personal history to the caller when a valid token is present
+  let uid: string | null = null;
+  try {
+    const h = req.headers.authorization || "";
+    if (h.startsWith("Bearer ")) uid = (jwt.verify(h.slice(7), config.jwtSecret) as any).id;
+  } catch { uid = null; }
+  const docs = uid
+    ? all<any>("SELECT * FROM documents WHERE user_id = ?", [uid])
+    : [];
+  const sims = uid
+    ? all<any>("SELECT sr.score FROM similarity_results sr JOIN documents d ON d.id = sr.document_id WHERE d.user_id = ?", [uid])
+    : [];
   res.json({
     totalPapers: papers.length, totalAuthors: get<any>("SELECT COUNT(*) AS c FROM authors")?.c || 0,
     totalTopics: get<any>("SELECT COUNT(*) AS c FROM topics")?.c || 0, analyses: docs.length,
