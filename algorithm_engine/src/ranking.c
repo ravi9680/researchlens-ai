@@ -21,6 +21,7 @@ void heap_push(MinHeap *h, int id, double score) {
             if (h->a[p].score <= h->a[i].score) break;
             swap(&h->a[p], &h->a[i]); i = p;
         }
+        // flag 1
     } else if (score > h->a[0].score) {
         h->a[0].id = id; h->a[0].score = score;
         int i = 0;
