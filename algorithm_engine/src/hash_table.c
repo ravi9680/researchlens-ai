@@ -5,7 +5,7 @@
 unsigned long ht_hash(const char *s) {
     unsigned long h = 5381;
     for (; *s; s++) h = ((h << 5) + h) + (unsigned char)*s;
-    return h;
+    return h;  
 }
 
 HashTable *ht_create(int nbuckets) {
@@ -52,3 +52,4 @@ void ht_foreach(HashTable *ht, void (*cb)(const char *, int, void *), void *user
     for (int i = 0; i < ht->nbuckets; i++)
         for (HTNode *n = ht->buckets[i]; n; n = n->next) cb(n->key, n->value, userdata);
 }
+//hi this comit
