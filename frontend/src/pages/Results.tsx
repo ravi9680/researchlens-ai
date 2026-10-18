@@ -59,7 +59,8 @@ export function Results() {
           <p className="mt-1 text-sm"><b>Comparison:</b> {r.summary?.comparison}</p>
           <p className="mt-1 text-sm"><b>Suggested improvements:</b></p>
           <ul className="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300">{(r.summary?.improvements || []).map((s: string) => <li key={s}>{s}</li>)}</ul>
-          <Link to={`/app/gaps/${id}`} className="btn mt-3 border border-slate-300 dark:border-white/15">Research gaps →</Link>
+          <p className="mt-2 text-sm"><b>Recommended reading:</b></p>
+          <ul className="list-disc pl-5 text-sm text-slate-600 dark:text-slate-300">{(r.summary?.reading || []).map((p: any) => <li key={p.id}>{p.title}</li>)}</ul>
         </Card>
       </div>
 

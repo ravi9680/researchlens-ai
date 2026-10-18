@@ -36,29 +36,3 @@ export function Chat() {
     </div>
   );
 }
-
-export function LitReview() {
-  const [topic, setTopic] = useState("phishing URL detection");
-  const [res, setRes] = useState<any>(null);
-  const [busy, setBusy] = useState(false);
-  return (
-    <div>
-      <PageTitle title="Literature review assistant" sub="Structured outline with citations to retrieved papers only" />
-      <Card>
-        <div className="flex gap-2"><input className="input" value={topic} onChange={(e) => setTopic(e.target.value)} />
-          <button className="btn-primary" disabled={busy} onClick={async () => { setBusy(true); setRes(await api.litReview(topic)); setBusy(false); }}>{busy ? "…" : "Generate outline"}</button></div>
-      </Card>
-      {res && (
-        <div className="mt-4 space-y-3">
-          <Card><h3 className="font-medium">Major themes</h3>{(res.themes || []).map((t: any, i: number) => (<p key={i} className="mt-2 text-sm"><b>{t.theme}</b> — {(t.papers || []).map((p: any) => p.title).join("; ")}</p>))}</Card>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Card><h4 className="text-sm font-medium">Methods</h4><ul className="list-disc pl-4 text-sm text-slate-500">{(res.methods || []).map((m: string) => <li key={m}>{m}</li>)}</ul></Card>
-            <Card><h4 className="text-sm font-medium">Limitations</h4><ul className="list-disc pl-4 text-sm text-slate-500">{(res.limitations || []).map((m: string) => <li key={m}>{m}</li>)}</ul></Card>
-            <Card><h4 className="text-sm font-medium">Future directions</h4><ul className="list-disc pl-4 text-sm text-slate-500">{(res.futureDirections || []).map((m: string) => <li key={m}>{m}</li>)}</ul></Card>
-          </div>
-          <Card><h3 className="font-medium">Papers used</h3>{(res.papers || []).map((p: any) => (<p key={p.id} className="mt-1 text-sm text-slate-500">{p.title} ({p.year}) {p.isDemo && "[DEMO]"}</p>))}<p className="mt-2 text-xs text-slate-400">{res.note}</p></Card>
-        </div>
-      )}
-    </div>
-  );
-}

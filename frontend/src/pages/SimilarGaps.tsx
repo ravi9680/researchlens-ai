@@ -43,27 +43,3 @@ export function SimilarPapers() {
     </div>
   );
 }
-
-export function Gaps() {
-  const { id = "" } = useParams();
-  const q = useQuery({ queryKey: ["report", id], queryFn: () => api.report(id) });
-  if (q.isLoading) return <div className="skel h-64" />;
-  if (q.isError) return <Empty text="Load the report first." />;
-  const r: any = q.data;
-  return (
-    <div>
-      <PageTitle title="Research gaps" sub=" grounded in retrieved literature — every gap lists supporting papers" />
-      <div className="space-y-3">
-        {(r.gaps || []).map((g: any, i: number) => (
-          <Card key={i}>
-            <div className="flex items-center gap-2"><h3 className="font-medium">{g.title}</h3><span className="badge bg-indigo-500/10 text-indigo-600">{g.confidence}</span></div>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{g.description}</p>
-            <p className="mt-2 text-sm"><b>Future direction:</b> {g.futureDirection}</p>
-            <p className="mt-2 text-xs text-slate-500">Supporting: {(g.supportingPapers || []).map((p: any) => p.title).join(" · ") || "—"}</p>
-          </Card>
-        ))}
-        {!(r.gaps || []).length && <Empty text="No gaps detected." />}
-      </div>
-    </div>
-  );
-}

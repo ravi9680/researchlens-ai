@@ -12,7 +12,7 @@ const FEATS = [
 export function Landing() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <nav className="flex items-center gap-2 font-semibold"><span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">◈</span> ResearchLens AI <span className="badge ml-2 bg-amber-100 text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">DEMO</span>
+      <nav className="flex items-center gap-2 font-semibold"><span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">◈</span> ResearchLens AI
         <Link to="/app" className="btn ml-auto">Open app</Link><Link to="/app/upload" className="btn-primary">Analyze a paper <ArrowRight size={15} /></Link>
       </nav>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mt-16 max-w-3xl">
