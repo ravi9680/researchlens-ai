@@ -48,7 +48,7 @@ router.post("/auth/demo", async (_req, res) => {
   let u = get<any>("SELECT * FROM users WHERE email = ?", ["demo@researchlens.ai"]);
   if (!u) {
     const id = randomUUID();
-    run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, "demo@researchlens.ai", await bcrypt.hash(randomUUID(), 8), "Demo Researcher", "admin"]);
+    run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, "demo@researchlens.ai", await bcrypt.hash(randomUUID(), 8), "Demo Researcher", "user"]);
     u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
   }
   res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name } });
