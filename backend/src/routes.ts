@@ -54,6 +54,27 @@ router.post("/auth/demo", async (_req, res) => {
   res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name } });
 });
 
+router.get("/auth/me", auth, (req: any, res) => {
+  const u = get<any>("SELECT id, email, name, role FROM users WHERE id = ?", [(req as any).user.id]);
+  if (!u) return res.status(404).json({ error: "Not found" });
+  res.json({ ...u });
+});
+
+router.get("/auth/me/role", auth, (req: any, res) => {
+  const u = get<any>("SELECT role FROM users WHERE id = ?", [(req as any).user.id]);
+  if (!u) return res.status(404).json({ error: "Not found" });
+  res.json({ role: u.role, isAdmin: u.role === "admin" });
+});
+
+router.get("/admin/stats", auth, (req: any, res) => {
+  const u = get<any>("SELECT role FROM users WHERE id = ?", [(req as any).user.id]);
+  if (!u || u.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  const totalUsers = get<any>("SELECT COUNT(*) AS c FROM users")?.c || 0;
+  const totalDocs = get<any>("SELECT COUNT(*) AS c FROM documents")?.c || 0;
+  const totalPapers = get<any>("SELECT COUNT(*) AS c FROM papers")?.c || 0;
+  res.json({ totalUsers, totalDocs, totalPapers });
+});
+
 /* ---------- engine / health ---------- */
 router.get("/health", (_req, res) => res.json({ ok: true, demoMode: config.demoMode, time: new Date().toISOString() }));
 router.get("/engine", (_req, res) => res.json({ ...cEngineInfo(), semantic: "IDF-weighted hashed embeddings (384-d, offline) or OpenAI text-embedding-3-small via EMBEDDING_PROVIDER; pgvector HNSW in prod", note: "C = lexical; embeddings = semantic. Never conflated." }));

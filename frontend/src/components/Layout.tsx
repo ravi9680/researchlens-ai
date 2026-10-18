@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Upload, FlaskConical, MessagesSquare, TrendingUp, Database, Settings, Sparkles, BookOpen, GitCompare, Cpu, Sun, Moon } from "lucide-react";
+import { LayoutDashboard, Upload, FlaskConical, MessagesSquare, TrendingUp, Database, Settings, Sparkles, BookOpen, GitCompare, Cpu, Sun, Moon, LogOut, User, Shield, Settings as SettingsIcon } from "lucide-react";
+import { api } from "../lib/api";
 
 const LINKS = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -9,17 +10,35 @@ const LINKS = [
   { to: "/app/chat", label: "Chat", icon: MessagesSquare },
   { to: "/app/trends", label: "Trends", icon: TrendingUp },
   { to: "/app/algorithms", label: "Algorithms", icon: Cpu },
-  { to: "/app/settings", label: "Settings", icon: Settings },
+  { to: "/app/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 export function Layout() {
   const nav = useNavigate();
   const [dark, setDark] = useState(document.documentElement.classList.contains("dark"));
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   useEffect(() => {
-    if (!localStorage.getItem("rl_token")) {
-      fetch("/api/auth/demo", { method: "POST" }).then((r) => r.json()).then((d) => d.token && localStorage.setItem("rl_token", d.token)).catch(() => {});
+    const token = localStorage.getItem("rl_token");
+    if (!token) {
+      nav("/app/auth");
+      return;
     }
-  }, []);
+    api.token = token;
+    api.me().then((d: any) => setUser(d)).catch(() => {
+      localStorage.removeItem("rl_token");
+      nav("/app/auth");
+    });
+    api.me().then((d: any) => {
+      if (d.role === "admin") setIsAdmin(true);
+    }).catch(() => {});
+  }, [nav]);
+
+  if (!user) {
+    return null; // loading
+  }
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-slate-200/60 bg-white/70 backdrop-blur dark:border-white/10 dark:bg-[#0a0f1e]/70">
@@ -28,9 +47,15 @@ export function Layout() {
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white"><Sparkles size={16} /></span>
             ResearchLens AI
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-white/5 text-sm">
+              <User size={14} className="mr-1" />
+              <span className="font-medium">{user.name || user.email}</span>
+              {isAdmin && <span className="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">ADMIN</span>}
+            </div>
             <button className="btn" onClick={() => { const d = !dark; setDark(d); document.documentElement.classList.toggle("dark", d); }} aria-label="theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
             <button className="btn-primary whitespace-nowrap text-xs sm:text-sm" onClick={() => nav("/app/upload")}><Upload size={15} /> Upload paper</button>
+            <button className="btn border border-slate-300 dark:border-white/15" onClick={() => { api.token = ""; localStorage.removeItem("rl_token"); nav("/app/auth"); }}><LogOut size={15} /> Logout</button>
           </div>
         </div>
       </header>
@@ -41,6 +66,13 @@ export function Layout() {
               <l.icon size={16} /> {l.label}
             </NavLink>
           ))}
+          {isAdmin && (
+            <div className="mt-4 px-3">
+              <NavLink to="/app/settings" end className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm bg-indigo-600/10 font-medium text-indigo-600 dark:text-indigo-300">
+                <Shield size={16} /> Admin Settings
+              </NavLink>
+            </div>
+          )}
         </aside>
         <main className="min-w-0 flex-1"><Outlet /></main>
       </div>

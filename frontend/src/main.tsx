@@ -15,6 +15,7 @@ import { Explorer, PaperDetails } from "./pages/Explore";
 import { Chat } from "./pages/ChatReview";
 import { Trends } from "./pages/Analytics";
 import { Algorithms, Settings } from "./pages/AlgorithmsSettings";
+import { Auth } from "./pages/Auth";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -35,6 +36,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="algorithms" element={<Algorithms />} />
             <Route path="settings" element={<Settings />} />
           </Route>
+          <Route path="/app/auth" element={<Auth />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>
