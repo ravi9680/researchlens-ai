@@ -97,6 +97,14 @@ router.get("/documents/:id/report", auth, (req, res) => {
   res.json(r.report);
 });
 
+router.delete("/documents/:id", auth, (req, res) => {
+  const d = ownDoc(req, req.params.id);
+  if (!d) return res.status(404).json({ error: "Not found" });
+  run("DELETE FROM similarity_results WHERE document_id = ?", [req.params.id]);
+  run("DELETE FROM documents WHERE id = ?", [req.params.id]);
+  res.json({ deleted: req.params.id });
+});
+
 /* ---------- papers ---------- */
 function authorsOf(pid: string) {
   return all<any>("SELECT a.name FROM paper_authors pa JOIN authors a ON a.id = pa.author_id WHERE pa.paper_id = ? ORDER BY pa.position", [pid]).map((r: any) => r.name);

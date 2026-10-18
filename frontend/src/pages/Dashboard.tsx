@@ -13,6 +13,13 @@ export function Dashboard() {
   const cards = [
     ["Indexed papers", d.totalPapers], ["Authors", d.totalAuthors], ["Topics", d.totalTopics], ["Avg similarity", `${d.avgSimilarity}%`],
   ];
+  async function delDoc(id: string) {
+    if (!confirm("Delete this analysis?")) return;
+    try {
+      await api.removeDoc(id);
+      dash.refetch();
+    } catch (e: any) { alert(e.message); }
+  }
   return (
     <div>
       <PageTitle title="Dashboard" sub="Research intelligence at a glance" />
@@ -28,11 +35,16 @@ export function Dashboard() {
           <h3 className="mb-3 text-sm font-medium">Recent analyses</h3>
           <div className="space-y-2">
             {(d.recent || []).map((r: any) => (
-              <Link key={r.id} to={r.stage === "DONE" ? `/app/results/${r.id}` : `/app/processing/${r.id}`} className="block rounded-xl border border-slate-200 p-3 text-sm hover:border-indigo-400 dark:border-white/10">
-                <p className="font-medium">{r.title || "Untitled"}</p>
-                <p className="mt-1 text-xs text-slate-500">{r.stage} · {r.progress}%</p>
-                <div className="mt-2"><ScoreBar v={r.progress} /></div>
-              </Link>
+              <div key={r.id} className="rounded-xl border border-slate-200 p-3 text-sm hover:border-indigo-400 dark:border-white/10 flex items-center justify-between">
+                <div>
+                  <Link to={r.stage === "DONE" ? `/app/results/${r.id}` : `/app/processing/${r.id}`} className="font-medium hover:underline">{r.title || "Untitled"}</Link>
+                  <p className="mt-1 text-xs text-slate-500">{r.stage} · {r.progress}%</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="mt-2"><ScoreBar v={r.progress} /></div>
+                  <button className="btn text-xs border border-slate-300 dark:border-white/15" onClick={() => delDoc(r.id)}>Delete</button>
+                </div>
+              </div>
             ))}
             {!(d.recent || []).length && <p className="text-sm text-slate-500">No analyses yet — upload your first paper.</p>}
           </div>

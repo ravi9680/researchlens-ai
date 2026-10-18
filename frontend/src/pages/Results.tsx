@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Card, PageTitle, ScoreBar, Empty } from "../components/Layout";
+import { Download } from "lucide-react";
 
 function Level({ l }: { l: string }) {
   const c = l.includes("HIGH") ? "bg-rose-500/15 text-rose-600" : l.includes("MODERATE") ? "bg-amber-500/15 text-amber-600" : "bg-emerald-500/15 text-emerald-600";
@@ -16,7 +17,10 @@ export function Results() {
   const r: any = q.data;
   return (
     <div>
-      <PageTitle title="Research analysis" sub={r.title} />
+      <div className="flex items-center justify-between mb-4">
+        <PageTitle title="Research analysis" sub={r.title} />
+        <button className="btn-primary" onClick={() => window.print()}><Download size={15} /> Export PDF</button>
+      </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-1">
           <p className="text-xs text-slate-500">OVERALL SEMANTIC SIMILARITY</p>
