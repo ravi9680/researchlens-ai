@@ -8,6 +8,9 @@ import { config } from "./config.js";
 import { router } from "./routes.js";
 
 const app = express();
+// Add security-related HTTP headers.
+
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: [config.frontendUrl, "http://localhost:5173", "http://127.0.0.1:5173"] }));
 app.use(express.json({ limit: "2mb" }));
