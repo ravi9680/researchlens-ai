@@ -1,12 +1,35 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { Card, PageTitle, Empty } from "../components/Layout";
+import { Bookmark, Bookmark as BookmarkFill } from "lucide-react";
 
 export function Explorer() {
   const [s, setS] = useState({ search: "", topic: "", sort: "relevance" });
   const q = useQuery({ queryKey: ["papers", s], queryFn: () => api.papers({ ...s, limit: "12" }) });
+  const qc = useQueryClient();
+  const saveMut = useMutation({
+    mutationFn: (id: string) => api.savePaper(id),
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["papers", s] });
+      const prev = qc.getQueryData(["papers", s]) as any;
+      qc.setQueryData(["papers", s], (old: any) => ({
+        ...old,
+        items: (old.items || []).map((p: any) =>
+          p.id === id ? { ...p, isSaved: !(p.isSaved || false) } : p
+        ),
+      }));
+      return { prev };
+    },
+    onError: (_err, vars: any, ctx: any) => {
+      qc.setQueryData(["papers", s], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["papers", s] });
+    },
+  });
+
   return (
     <div>
       <PageTitle title="Research explorer" sub="Search the knowledge base" />
@@ -31,10 +54,20 @@ export function Explorer() {
       </Card>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {(q.data as any)?.items?.map((p: any) => (
-          <Link key={p.id} to={`/app/paper/${p.id}`} className="card p-4 hover:border-indigo-400">
-            <p className="font-medium">{p.title} {p.is_demo && <span className="badge bg-amber-100 text-amber-700">DEMO</span>}</p>
-            <p className="mt-1 text-xs text-slate-500">{(p.authors || []).join(", ")} · {p.year} · {p.venue}</p>
-            <p className="mt-2 line-clamp-3 text-sm text-slate-500">{p.abstract}</p>
+          <Link key={p.id} to={`/app/paper/${p.id}`} className="card p-4 hover:border-indigo-400 relative">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="font-medium">{p.title} {p.is_demo && <span className="badge bg-amber-100 text-amber-700">DEMO</span>}</p>
+                <p className="mt-1 text-xs text-slate-500">{(p.authors || []).join(", ")} · {p.year} · {p.venue}</p>
+                <p className="mt-2 line-clamp-3 text-sm text-slate-500">{p.abstract}</p>
+              </div>
+              <button
+                onClick={(e) => { e.preventDefault(); saveMut.mutate(p.id); }}
+                className={`p-2 rounded-lg transition-colors ${p.isSaved ? "bg-amber-500/20 text-amber-600" : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"}`}
+              >
+                {p.isSaved ? <BookmarkFill size={18} fill="currentColor" /> : <Bookmark size={18} />}
+              </button>
+            </div>
           </Link>
         ))}
       </div>
@@ -46,14 +79,30 @@ export function Explorer() {
 
 export function PaperDetails() {
   const { id = "" } = useParams();
+  const [isSaved, setIsSaved] = useState(false);
   const q = useQuery({ queryKey: ["paper", id], queryFn: () => api.paper(id) });
+  const saveMut = useMutation({
+    mutationFn: () => api.savePaper(id),
+    onMutate: () => { setIsSaved(!isSaved); },
+    onError: () => { setIsSaved(!isSaved); },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ["paper", id] }); },
+  });
+  const qc = useQueryClient();
   if (q.isLoading) return <div className="skel h-64" />;
   if (q.isError) return <Empty text="Paper not found." />;
   const p: any = q.data;
   return (
     <div>
-      <PageTitle title={p.title} sub={`${(p.authors || []).join(", ")} · ${p.year} · ${p.venue}`} />
-      {p.is_demo && <p className="badge mb-3 bg-amber-100 text-amber-800">DEMO — synthetic metadata, not a real citation</p>}
+      <div className="flex items-center justify-between mb-4">
+        <PageTitle title={p.title} sub={`${(p.authors || []).join(", ")} · ${p.year} · ${p.venue}`} />
+        <button
+          onClick={() => saveMut.mutate()}
+          className={`p-2 rounded-lg transition-colors ${isSaved ? "bg-amber-500/20 text-amber-600" : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"}`}
+        >
+          {isSaved ? <BookmarkFill size={18} fill="currentColor" /> : <Bookmark size={18} />}
+        </button>
+      </div>
+      {p.is_demo && <p className="badge mb-3 bg-amber-100 text-amber-700">DEMO — synthetic metadata, not a real citation</p>}
       <Card><h3 className="text-sm font-medium">Abstract</h3><p className="mt-2 text-sm leading-relaxed">{p.abstract}</p>
         <p className="mt-3 text-xs text-slate-500">DOI: {p.doi || "—"} · Citations: {p.citation_count} · Source: {p.source_url || "—"}</p></Card>
       <Card className="mt-4"><h3 className="text-sm font-medium">Indexed chunks</h3>

@@ -29,7 +29,13 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id);
 CREATE TABLE IF NOT EXISTS similarity_results (id TEXT PRIMARY KEY, document_id TEXT NOT NULL, paper_id TEXT NOT NULL, score REAL NOT NULL, section_scores TEXT DEFAULT '{}', matches_json TEXT DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
-  id TEXT PRIMARY KEY, domain TEXT DEFAULT '', target_count INTEGER DEFAULT 0, status TEXT DEFAULT 'running',
-  progress INTEGER DEFAULT 0, succeeded INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, duplicates INTEGER DEFAULT 0,
+  id TEXT PRIMARY KEY, domain TEXT DEFAULT '', target_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'running', progress INT DEFAULT 0, succeeded INT DEFAULT 0,
+  failed INT DEFAULT 0, duplicates INT DEFAULT 0,
   log_json TEXT DEFAULT '[]', created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS saved_papers (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, paper_id TEXT NOT NULL,
+  saved_at TEXT DEFAULT (datetime('now')),
+  UNIQUE (user_id, paper_id)
 );

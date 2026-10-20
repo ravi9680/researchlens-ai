@@ -48,6 +48,7 @@ export const api = {
   kb: () => fetch(`${BASE}/api/knowledge-base/stats`).then(j),
   ingest: (domain: string, count: number) => fetch(`${BASE}/api/ingest/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain, count }) }).then(j),
   ingestStatus: (id: string) => fetch(`${BASE}/api/ingest/${id}`).then(j),
+  savePaper: (id: string) => fetch(`${BASE}/api/papers/${id}/save`, { method: "POST", headers: api.h() }).then(j),
   chat: (question: string) => fetch(`${BASE}/api/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) }).then(j),
   litReview: (topic: string, paperIds: string[] = []) => fetch(`${BASE}/api/literature-review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, paperIds }) }).then(j),
   algorithms: () => fetch(`${BASE}/api/algorithms`).then(j),

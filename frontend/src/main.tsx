@@ -12,6 +12,7 @@ import { Processing } from "./pages/Processing";
 import { Results } from "./pages/Results";
 import { SimilarPapers } from "./pages/SimilarGaps";
 import { Explorer, PaperDetails } from "./pages/Explore";
+import { Saved } from "./pages/Saved";
 import { Chat } from "./pages/ChatReview";
 import { Trends } from "./pages/Analytics";
 import { Algorithms, Settings } from "./pages/AlgorithmsSettings";
@@ -33,6 +34,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="paper/:id" element={<PaperDetails />} />
             <Route path="chat" element={<Chat />} />
             <Route path="trends" element={<Trends />} />
+            <Route path="saved" element={<Saved />} />
             <Route path="algorithms" element={<Algorithms />} />
             <Route path="settings" element={<Settings />} />
           </Route>

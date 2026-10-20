@@ -1,12 +1,13 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Upload, FlaskConical, MessagesSquare, TrendingUp, Database, Settings, Sparkles, BookOpen, GitCompare, Cpu, Sun, Moon, LogOut, User, Shield, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, Upload, FlaskConical, MessagesSquare, TrendingUp, Database, Settings, Sparkles, BookOpen, GitCompare, Cpu, Sun, Moon, LogOut, User, Shield, Settings as SettingsIcon, Bookmark } from "lucide-react";
 import { api } from "../lib/api";
 
 const LINKS = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/app/upload", label: "Upload", icon: Upload },
   { to: "/app/explorer", label: "Explorer", icon: BookOpen },
+  { to: "/app/saved", label: "Saved", icon: Bookmark },
   { to: "/app/chat", label: "Chat", icon: MessagesSquare },
   { to: "/app/trends", label: "Trends", icon: TrendingUp },
   { to: "/app/algorithms", label: "Algorithms", icon: Cpu },

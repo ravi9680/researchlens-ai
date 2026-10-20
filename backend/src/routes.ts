@@ -155,7 +155,24 @@ router.get("/papers/:id", (req, res) => {
   res.json({ ...p, authors: authorsOf(p.id), chunks, is_demo: Boolean(p.is_demo) });
 });
 
-/* ---------- trends ---------- */
+router.post("/papers/:id/save", auth, (req, res) => {
+  const paperId = req.params.id;
+  const userId = (req as any).user.id;
+  const existing = get<any>("SELECT id FROM saved_papers WHERE user_id = ? AND paper_id = ?", [userId, paperId]);
+  if (existing) {
+    run("DELETE FROM saved_papers WHERE user_id = ? AND paper_id = ?", [userId, paperId]);
+    return res.json({ saved: false });
+  }
+  run("INSERT INTO saved_papers (id, user_id, paper_id) VALUES (?,?,?)", [randomUUID(), userId, paperId]);
+  res.json({ saved: true });
+});
+
+router.get("/papers/saved", auth, (req, res) => {
+  const userId = (req as any).user.id;
+  const rows = all<any>("SELECT p.* FROM papers p JOIN saved_papers sp ON sp.paper_id = p.id WHERE sp.user_id = ? ORDER BY sp.saved_at DESC", [userId]);
+  res.json(rows.map((p: any) => ({ ...p, authors: authorsOf(p.id), is_demo: Boolean(p.is_demo) })));
+});
+
 router.get("/trends", (_req, res) => {
   const papers = all<any>("SELECT * FROM papers");
   const byYear: Record<string, number> = {};
