@@ -66,6 +66,15 @@ router.get("/auth/me/role", auth, (req: any, res) => {
   res.json({ role: u.role, isAdmin: u.role === "admin" });
 });
 
+router.post("/auth/make-admin", auth, (req: any, res) => {
+  const u = get<any>("SELECT id, role FROM users WHERE id = ?", [(req as any).user.id]);
+  if (!u) return res.status(404).json({ error: "Not found" });
+  const existingAdmin = get<any>("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+  if (existingAdmin) return res.status(400).json({ error: "Admin already exists" });
+  run("UPDATE users SET role = 'admin' WHERE id = ?", [(req as any).user.id]);
+  res.json({ ok: true, message: "You are now admin" });
+});
+
 router.get("/admin/stats", auth, (req: any, res) => {
   const u = get<any>("SELECT role FROM users WHERE id = ?", [(req as any).user.id]);
   if (!u || u.role !== "admin") return res.status(403).json({ error: "Admin only" });
