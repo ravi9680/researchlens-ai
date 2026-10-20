@@ -32,9 +32,11 @@ router.post("/auth/register", async (req, res) => {
   if (!s.success) return res.status(400).json({ error: "Invalid input" });
   if (get("SELECT id FROM users WHERE email = ?", [s.data.email])) return res.status(409).json({ error: "Email exists" });
   const id = randomUUID();
-  run("INSERT INTO users (id, email, password_hash, name) VALUES (?,?,?,?)", [id, s.data.email, await bcrypt.hash(s.data.password, 10), s.data.name]);
+  const existingCount = get<any>("SELECT COUNT(*) as c FROM users")?.c || 0;
+  const role = existingCount === 0 ? "admin" : "user";
+  run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, s.data.email, await bcrypt.hash(s.data.password, 10), s.data.name, role]);
   const u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
-  res.json({ token: sign(u), user: { id, email: u.email, name: u.name } });
+  res.json({ token: sign(u), user: { id, email: u.email, name: u.name, role: u.role } });
 });
 
 router.post("/auth/login", async (req, res) => {
