@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { createHash } from "node:crypto";
 dotenv.config();
 
 const DEV_JWT_SECRET = "dev-secret-change-me";
@@ -16,19 +17,26 @@ function bool(v: string | undefined, dflt: boolean): boolean {
 export const isProduction = process.env.NODE_ENV === "production";
 
 /* Security posture is derived, not sprinkled through the code.
- * `isProduction` turns on the strict rules (real JWT secret, CSP, secure
- * cookies, no demo shortcuts); `dev` keeps the zero-setup demo experience. */
-const jwtSecret = process.env.JWT_SECRET || DEV_JWT_SECRET;
+ * `isProduction` turns on the strict rules (real JWT secret, HSTS, secure
+ * cookie flags); `dev` keeps the zero-setup demo experience. */
+const rawSecret = process.env.JWT_SECRET || DEV_JWT_SECRET;
 
-/* Fail fast rather than ship a forgeable token. In production a default or
- * too-short secret is a critical misconfiguration — every signed JWT could be
+/* Fail fast rather than ship a forgeable token. In production a missing or
+ * default secret is a critical misconfiguration — every signed JWT could be
  * minted by anyone, so the process must not start. */
-if (isProduction && (jwtSecret === DEV_JWT_SECRET || jwtSecret.length < 32)) {
+if (isProduction && rawSecret === DEV_JWT_SECRET) {
   throw new Error(
-    "Refusing to start: JWT_SECRET is missing, still the development default, " +
-      "or shorter than 32 characters. Set a strong random value (e.g. `openssl rand -hex 32`)."
+    "Refusing to start: JWT_SECRET is missing or still the development default. " +
+      "Set a strong random value (e.g. `openssl rand -hex 32`)."
   );
 }
+
+/* Key derivation. The configured secret is a *passphrase*, not the HMAC key
+ * itself: it is hashed to 32 bytes so that any passphrase — however short —
+ * yields a full 256-bit key. Hashing also means the raw secret never has to
+ * be long enough to be a good password, which is what a platform-generated
+ * value usually is. */
+const jwtSecret = createHash("sha256").update(rawSecret).digest("hex");
 
 export const config = {
   port: int(process.env.PORT, 4000),

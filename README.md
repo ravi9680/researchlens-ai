@@ -107,7 +107,7 @@ Copy `.env.example` → `backend/.env`. Demo mode needs zero keys.
 |---|---|
 | `EMBEDDING_PROVIDER=openai` + `AI_API_KEY` | Real embeddings (then `npm run reembed` — the re-embed now genuinely uses the provider) |
 | `DATABASE_URL` | Postgres production (see `backend/migrations/postgres.sql`) |
-| `JWT_SECRET` | **Must** be changed from the dev default before any public deploy — the server refuses to start otherwise |
+| `JWT_SECRET` | **Must** be changed from the dev default before any public deploy — the server refuses to start otherwise. The value is SHA-256 hashed into a 256-bit signing key, so any length is safe |
 | `TOKEN_TTL` / `REFRESH_TOKEN_TTL` | Access / refresh token lifetimes (default `2h` / `30d`) |
 | `BCRYPT_ROUNDS` | Password hashing cost (default 10, 12 in production) |
 

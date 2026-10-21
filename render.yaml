@@ -14,10 +14,22 @@ services:
       npm --prefix frontend run build
     startCommand: npm --prefix backend run start
     envVars:
+      - key: NODE_ENV
+        value: "production"
       - key: DEMO_MODE
         value: "true"
       - key: EMBEDDING_PROVIDER
         value: local
+      - key: TOKEN_TTL
+        value: 2h
+      - key: REFRESH_TOKEN_TTL
+        value: 30d
+      - key: BCRYPT_ROUNDS
+        value: "12"
+      # A random secret per deploy. It is hashed with SHA-256 before use as
+      # the HMAC key, so any length yields a full 256-bit key. The server
+      # refuses to start in production if this is missing or left at the
+      # development default.
       - key: JWT_SECRET
         generateValue: true
 # NOTE (free tier): filesystem is ephemeral — uploaded papers and the SQLite

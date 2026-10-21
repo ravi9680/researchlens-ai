@@ -38,21 +38,33 @@ export function createApp() {
 
   /* ---- CORS ----------------------------------------------------------
    * Only the configured frontend origin may call the API with credentials.
-   * In production the default localhost origins are dropped entirely. */
+   * In production the default localhost origins are dropped entirely.
+   *
+   * The app also runs in "single-link" mode, where Express serves the built
+   * frontend from the same origin — a request from that origin carries an
+   * `Origin` header equal to the host being served, which is not in the
+   * allow-list. Same-origin requests are always safe, so they are allowed
+   * explicitly instead of being rejected by the allow-list. */
   const allowedOrigins = config.isProduction
     ? [config.frontendUrl]
     : [config.frontendUrl, "http://localhost:5173", "http://127.0.0.1:5173"];
+
   app.use(
-    cors({
-      origin: (origin, cb) => {
-        // Same-origin / curl / server-to-server calls have no Origin header.
-        if (!origin) return cb(null, true);
-        cb(null, allowedOrigins.includes(origin));
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"],
-      maxAge: 86400,
+    cors((req, callback) => {
+      const origin = req.header("Origin");
+      // No Origin header: same-origin navigation, curl, or server-to-server.
+      if (!origin) return callback(null, { origin: false, credentials: true });
+
+      const selfOrigin = `${req.protocol}://${req.get("host")}`;
+      const ok = allowedOrigins.includes(origin) || origin === selfOrigin;
+
+      callback(null, {
+        origin: ok ? origin : false,
+        credentials: true,
+        methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+        maxAge: 86400,
+      });
     })
   );
 

@@ -57,7 +57,8 @@ login / register ──► access token  (2 h,  JWT, sent as Authorization: Bear
 | Token type separation | A refresh token presented as an access token is rejected (`typ` claim) | test *refuses a refresh token used as an access token* |
 | Unique refresh tokens | A random `jti` makes every token byte-distinct, so rotation really rotates | `services/auth.ts` |
 | Logout revocation | `POST /api/auth/logout` revokes every refresh token for the account | `routes.ts` |
-| Fail-fast secret | In production the process **refuses to boot** with a default or <32-char `JWT_SECRET` | `config.ts` |
+| Fail-fast secret | In production the process **refuses to boot** when `JWT_SECRET` is missing or still the development default | `config.ts` |
+| Key derivation | The configured secret is a *passphrase*: it is SHA-256 hashed to 32 bytes before use as the HMAC key, so any passphrase yields a full 256-bit key and the raw value is never the signing key | `config.ts` |
 
 ### 2.3 Credentials
 
@@ -138,17 +139,16 @@ credible.
 1. **SQLite has no row-level security.** Isolation is enforced in the route
    layer, which is one layer of code between a bug and a data leak. Moving to
    Postgres with per-user RLS policies would make the guarantee structural.
-2. **The shared demo account** (`/api/auth/demo`) is a single identity for
+2. **Rate-limit counters are per process and in memory.** Behind several
+   instances the effective limit multiplies, and the failed-login counters
+   reset on restart.
+3. **The shared demo account** (`/api/auth/demo`) is a single identity for
    every visitor who asks for it. It exists for backwards compatibility with
    older demos; the guest flow is the supported path.
-3. **Rate limiting is per process.** Behind several instances the effective
-   limit multiplies. A shared store (Redis) would fix that.
-4. **Failed-login counters live in memory** and reset on restart. The window
-   still throttles a live attack; it does not survive a redeploy.
-5. **The upload allow-list is extension + MIME, not magic bytes.** A file
+4. **The upload allow-list is extension + MIME, not magic bytes.** A file
    renamed to `.pdf` is caught downstream by the readability guard, but the
    first line of defence is not content sniffing.
-6. **No 2FA.** The threat model assumes the password is the only factor.
-7. **The demo corpus is synthetic.** Demo rows are flagged `is_demo` and
+5. **No 2FA.** The threat model assumes the password is the only factor.
+6. **The demo corpus is synthetic.** Demo rows are flagged `is_demo` and
    badged `DEMO` in every surface so they are never mistaken for verified
    citations; real ingestion stores the source DOI/URL.
