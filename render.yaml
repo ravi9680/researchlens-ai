@@ -7,8 +7,8 @@ services:
     plan: free
     buildCommand: >-
       make -C algorithm_engine &&
-      npm --prefix backend install &&
-      npm --prefix frontend install &&
+      npm --prefix backend install --include=dev &&
+      npm --prefix frontend install --include=dev &&
       npm --prefix backend run migrate &&
       npm --prefix backend run seed &&
       npm --prefix frontend run build
@@ -32,6 +32,13 @@ services:
       # development default.
       - key: JWT_SECRET
         generateValue: true
+# IMPORTANT: the install steps use `--include=dev` on purpose.
+# This service runs with NODE_ENV=production, and npm omits devDependencies
+# whenever that is set — which would leave `tsx` (the TypeScript runner used
+# by migrate/seed) and `vite` (the frontend bundler) uninstalled and the
+# build would fail with "tsx: not found". `--include=dev` forces them back in
+# for the build step while the runtime itself still runs production-only code.
+#
 # NOTE (free tier): filesystem is ephemeral — uploaded papers and the SQLite
 # DB reset on restart/redeploy (demo seed re-runs each deploy, so the app
 # always boots with data). For persistence use Render Postgres + the DDL in
