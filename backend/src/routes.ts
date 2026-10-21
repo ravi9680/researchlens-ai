@@ -140,6 +140,7 @@ router.get("/documents/:id/report", auth, (req, res) => {
   res.json(r.report);
 });
 
+
 router.delete("/documents/:id", auth, (req, res) => {
   const d = ownDoc(req, req.params.id);
   if (!d) return res.status(404).json({ error: "Not found" });
