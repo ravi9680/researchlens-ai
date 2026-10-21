@@ -55,21 +55,26 @@ export function SimilarPapers() {
       <PageTitle title="Full Analysis Report" sub={`${papers.length} similar papers · ${gaps.length} research gaps · ${passages.length} passage matches`} />
 
       {/* Tabs */}
-      <div className="mb-4 flex gap-1 rounded-2xl border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-1">
+      <div className="mb-4 flex gap-1 rounded-2xl border border-slate-200/70 bg-slate-50 p-1 transition-colors dark:border-white/10 dark:bg-white/5">
         {TABS.map((t, i) => (
           <button
             key={t}
             onClick={() => setTab(i)}
-            className={`flex-1 rounded-xl py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-xl py-2 text-sm font-medium transition-all duration-200 ${
               tab === i
-                ? "bg-white dark:bg-white/10 shadow-sm text-indigo-600 dark:text-indigo-300"
-                : "text-muted hover:text-slate-700 dark:hover:text-slate-200"
+                ? "bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/70 dark:bg-white/10 dark:text-indigo-300 dark:ring-white/10"
+                : "text-muted hover:bg-white/60 hover:text-slate-800 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
             }`}
           >
             {t}
             {i === 1 && gaps.length > 0 && (
-              <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white text-xs">
+              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
                 {gaps.length}
+              </span>
+            )}
+            {i === 2 && passages.length > 0 && (
+              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-indigo-500 px-1 text-[10px] font-bold text-white">
+                {passages.length}
               </span>
             )}
           </button>

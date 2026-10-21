@@ -161,16 +161,14 @@ export function Chat() {
       )}
 
       {/* ---------- composer ---------- */}
-      <Card className="mt-auto">
-        <form
-          onSubmit={(e) => { e.preventDefault(); ask(); }}
-          className="flex items-end gap-2"
-        >
+      <Card className="mt-auto transition-shadow duration-300 focus-within:shadow-xl focus-within:shadow-indigo-500/10">
+        <form onSubmit={(e) => { e.preventDefault(); ask(); }} className="flex items-end gap-2">
           <textarea
             className="input max-h-32 min-h-[2.75rem] flex-1 resize-none py-3"
             rows={1}
             value={qq}
             placeholder="Ask a research question about the indexed literature…"
+            aria-label="Research question"
             onChange={(e) => {
               setQ(e.target.value);
               e.target.style.height = "auto";
@@ -180,8 +178,16 @@ export function Chat() {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
             }}
           />
-          <button type="submit" className="btn-primary h-11 w-11 shrink-0 p-0" disabled={busy || !qq.trim()} aria-label="Send">
-            <Send size={16} />
+          <button
+            type="submit"
+            className="btn-primary h-11 w-11 shrink-0 p-0 disabled:opacity-40"
+            disabled={busy || !qq.trim()}
+            aria-label="Send"
+            title="Send question"
+          >
+            {busy
+              ? <Loader2 size={16} className="animate-spin" />
+              : <Send size={16} className="transition-transform duration-200 group-hover:translate-x-0.5" />}
           </button>
         </form>
 

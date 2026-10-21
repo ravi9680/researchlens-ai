@@ -33,10 +33,10 @@ export function Upload() {
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)}
             onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) send(f); }}
-            className={`relative grid place-items-center rounded-2xl border-2 border-dashed px-6 py-14 text-center transition-all duration-200 ${
+            className={`relative grid place-items-center rounded-2xl border-2 border-dashed px-6 py-14 text-center transition-all duration-300 ${
               drag
-                ? "scale-[1.01] border-indigo-500 bg-indigo-50/70 dark:bg-indigo-500/10"
-                : "border-slate-300 bg-slate-50/50 hover:border-slate-400 dark:border-white/15 dark:bg-white/[0.02] dark:hover:border-white/25"
+                ? "scale-[1.01] border-indigo-500 bg-indigo-50/70 shadow-lg shadow-indigo-500/10 dark:bg-indigo-500/10"
+                : "border-slate-300 bg-slate-50/50 hover:border-slate-400 hover:bg-slate-50 dark:border-white/15 dark:bg-white/[0.02] dark:hover:border-white/25"
             }`}
           >
             {busy ? (
@@ -49,7 +49,7 @@ export function Upload() {
               </>
             ) : (
               <>
-                <span className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-600/25">
+                <span className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-600/25 transition-transform duration-300 hover:scale-110">
                   <UploadCloud size={28} />
                 </span>
                 <p className="mt-4 text-lg font-semibold tracking-tight text-body">Drag &amp; drop your paper here</p>

@@ -103,20 +103,32 @@ export function GraphLab() {
                 const isNeighbour = neighbours.has(n.index);
                 const dim = active && !isActive && !isNeighbour;
                 return (
-                  <g key={n.id} onClick={() => setActive(n)} className="cursor-pointer">
+                  <g
+                    key={n.id}
+                    onClick={() => setActive(n)}
+                    className="cursor-pointer transition-opacity duration-300"
+                    style={{ opacity: dim ? 0.28 : 1 }}
+                  >
                     {isActive && (
-                      <circle cx={p.x} cy={p.y} r={radiusOf(n) + 7} fill={colorOf(n.component)} fillOpacity={0.15} />
+                      <circle
+                        cx={p.x} cy={p.y} r={radiusOf(n) + 9}
+                        fill={colorOf(n.component)} fillOpacity={0.18}
+                        className="animate-glow"
+                      />
                     )}
+                    {/* Invisible hit target — small nodes are hard to click. */}
+                    <circle cx={p.x} cy={p.y} r={Math.max(radiusOf(n) + 6, 12)} fill="transparent" />
                     <circle
                       cx={p.x} cy={p.y} r={radiusOf(n)}
-                      fill={colorOf(n.component)} fillOpacity={dim ? 0.15 : 0.88}
+                      fill={colorOf(n.component)} fillOpacity={0.9}
                       stroke={isActive ? "#0f172a" : "white"} strokeWidth={isActive ? 2.5 : 1.5}
-                      className="transition-all duration-200 dark:stroke-slate-900"
+                      className="transition-all duration-200 hover:brightness-110 dark:stroke-slate-900"
                     />
                     {showLabels && !dim && (
                       <text
-                        x={p.x} y={p.y - radiusOf(n) - 5} textAnchor="middle"
+                        x={p.x} y={p.y - radiusOf(n) - 6} textAnchor="middle"
                         fontSize={9.5} className="fill-slate-600 dark:fill-slate-300"
+                        style={{ pointerEvents: "none" }}
                       >
                         {(n.title || "").length > 26 ? `${n.title.slice(0, 25)}…` : n.title}
                       </text>
