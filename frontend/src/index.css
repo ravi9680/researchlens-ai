@@ -143,8 +143,18 @@
            dark:hover:border-white/25 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20;
   }
   .select {
-    @apply input cursor-pointer appearance-none bg-[length:1rem] bg-[right_0.75rem_center] bg-no-repeat pr-9;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    @apply input cursor-pointer appearance-none pr-9;
+    /* Longhands, not the `background` shorthand: the `background-image`
+       shorthand resets background-size/position/repeat, which would leave the
+       chevron mis-sized and tiled. Order matters — image first, then the
+       longhands that position it. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    background-repeat: no-repeat;
+  }
+  .dark .select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   }
   .label {
     @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400;
