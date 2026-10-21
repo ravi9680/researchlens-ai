@@ -15,6 +15,17 @@ import { cEngineInfo, cGraph, cEngineAvailable } from "./services/cEngine.js";
 
 export const router = Router();
 
+// Ensure saved_papers table exists on startup (for Render deployments)
+try {
+  run(`CREATE TABLE IF NOT EXISTS saved_papers (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, paper_id TEXT NOT NULL,
+    saved_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (user_id, paper_id)
+  )`);
+} catch (e) {
+  console.log("saved_papers table init:", e);
+}
+
 /* ---------- auth ---------- */
 function sign(user: any) {
   return jwt.sign({ id: user.id, email: user.email, role: user.role }, config.jwtSecret, { expiresIn: "7d" });
