@@ -87,15 +87,25 @@ export function Explorer() {
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {(q.data as any)?.items?.map((p: any) => (
-          <Link
+          /* The card is a container, not a link: nesting <button> inside a
+           * <Link> is invalid HTML and breaks keyboard and screen-reader
+           * navigation. A "stretched link" covers the card instead, and the
+           * two action buttons sit above it in the stacking order. */
+          <div
             key={p.id}
-            to={`/app/paper/${p.id}`}
             className={`card card-hover group relative p-4 ${selected.includes(p.id) ? "border-indigo-400 ring-2 ring-indigo-500/20 dark:border-indigo-400/60" : ""}`}
           >
             {/* Accent rail that appears on hover — a cheap, strong
                 "this card is clickable" cue. */}
             <span className="pointer-events-none absolute inset-y-3 left-0 w-0.5 scale-y-0 rounded-r-full bg-gradient-to-b from-indigo-500 to-violet-500 transition-transform duration-300 group-hover:scale-y-100" />
-            <div className="flex items-start justify-between gap-3">
+            <Link
+              to={`/app/paper/${p.id}`}
+              className="absolute inset-0 z-0 rounded-2xl"
+              aria-label={p.title}
+            >
+              <span className="sr-only">Open {p.title}</span>
+            </Link>
+            <div className="pointer-events-none relative z-10 flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="font-semibold leading-snug text-body transition group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
                   {p.title}
@@ -117,34 +127,35 @@ export function Explorer() {
                 <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted">{p.abstract}</p>
               </div>
 
-              <div className="flex shrink-0 flex-col gap-1.5">
+              {/* z-20 keeps these clickable above the stretched link. */}
+              <div className="pointer-events-auto relative z-20 flex shrink-0 flex-col gap-1.5">
                 <button
-                  onClick={(e) => { e.preventDefault(); saved.toggle(p.id); }}
+                  onClick={() => saved.toggle(p.id)}
                   className={`grid h-9 w-9 place-items-center rounded-xl transition ${
                     saved.isSaved(p.id)
                       ? "bg-amber-500/20 text-amber-600"
                       : "text-slate-400 hover:bg-amber-500/10 hover:text-amber-600"
                   }`}
                   title={saved.isSaved(p.id) ? "Remove bookmark" : "Bookmark"}
-                  aria-label={saved.isSaved(p.id) ? "Remove bookmark" : "Bookmark"}
+                  aria-label={saved.isSaved(p.id) ? `Remove bookmark for ${p.title}` : `Bookmark ${p.title}`}
                 >
                   {saved.isSaved(p.id) ? <BookmarkFill size={17} fill="currentColor" /> : <Bookmark size={17} />}
                 </button>
                 <button
-                  onClick={(e) => { e.preventDefault(); toggleSelect(p.id); }}
+                  onClick={() => toggleSelect(p.id)}
                   className={`grid h-9 w-9 place-items-center rounded-xl transition ${
                     selected.includes(p.id)
                       ? "bg-indigo-500/20 text-indigo-600"
                       : "text-slate-400 hover:bg-indigo-500/10 hover:text-indigo-600"
                   }`}
                   title="Select for comparison"
-                  aria-label="Select for comparison"
+                  aria-label={`Select ${p.title} for comparison`}
                 >
                   <GitCompare size={17} />
                 </button>
               </div>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
 

@@ -213,11 +213,13 @@ describe("research explorer", () => {
     const { Explorer } = await import("./pages/Explore");
     wrap(<Explorer />);
 
-    await waitFor(() => expect(screen.getByText(/Phishing URL Detection/)).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText(/Phishing URL Detection/).length).toBeGreaterThan(0));
     expect(screen.getByText(/2 indexed papers/i)).toBeTruthy();
     // The relevance score is surfaced, and demo rows are badged.
     expect(screen.getByText(/relevance 3\.4/i)).toBeTruthy();
     expect(screen.getByText("DEMO")).toBeTruthy();
+    // The card is a stretched link, so the paper has an accessible name.
+    expect(screen.getByRole("link", { name: /Phishing URL Detection/i })).toBeTruthy();
   });
 
   it("re-queries the API when the search term changes", async () => {
