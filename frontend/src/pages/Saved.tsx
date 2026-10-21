@@ -14,10 +14,13 @@ export function Saved() {
       setSaved([]);
       return;
     }
-    // Fetch details for each saved paper
-    Promise.all(savedIds.map((id: string) => api.paper(id))).then((papers) => {
-      setSaved(papers as any[]);
-    }).catch(() => setSaved([]));
+    // Fetch details for each saved paper; use allSettled so one failure doesn't wipe the list
+    Promise.allSettled(savedIds.map((id: string) => api.paper(id))).then((results) => {
+      const papers = results
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value != null)
+        .map((r) => r.value);
+      setSaved(papers);
+    });
   };
 
   const removeSave = (id: string) => {
