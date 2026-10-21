@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Upload, MessagesSquare, TrendingUp, Settings as SettingsIcon, Sparkles,
   BookOpen, Cpu, Sun, Moon, LogOut, User, Shield, Bookmark, Network, BookMarked, Menu, X,
+  ShieldCheck, Command,
 } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -16,6 +17,7 @@ const LINKS = [
   { to: "/app/review", label: "Review", icon: BookMarked, group: "Explore" },
   { to: "/app/trends", label: "Trends", icon: TrendingUp, group: "Explore" },
   { to: "/app/algorithms", label: "Algorithms", icon: Cpu, group: "Reference" },
+  { to: "/app/security", label: "Security", icon: ShieldCheck, group: "Reference" },
   { to: "/app/settings", label: "Settings", icon: SettingsIcon, group: "Reference" },
 ];
 
@@ -25,7 +27,7 @@ const TITLES: Record<string, string> = {
   "/app": "Dashboard", "/app/upload": "Upload paper", "/app/explorer": "Research explorer",
   "/app/saved": "Saved papers", "/app/chat": "Research chat", "/app/graph": "Citation graph",
   "/app/review": "Literature review", "/app/trends": "Research trends",
-  "/app/algorithms": "Algorithms", "/app/settings": "Settings",
+  "/app/algorithms": "Algorithms", "/app/security": "Security", "/app/settings": "Settings",
 };
 
 export function Layout() {
@@ -40,35 +42,66 @@ export function Layout() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
-  // Keep the document title in sync with the active route.
+  /* Keep the document title in sync with the active route. */
   useEffect(() => {
     document.title = TITLES[loc.pathname]
       ? `${TITLES[loc.pathname]} · ResearchLens AI`
       : "ResearchLens AI — Research Intelligence";
   }, [loc.pathname]);
 
-  // Close the mobile drawer whenever the route changes.
+  /* Close the mobile drawer whenever the route changes. */
   useEffect(() => { setMenuOpen(false); }, [loc.pathname]);
 
+  /* ------------------------------------------------------------------
+   * Identity bootstrap.
+   *
+   * A first-time visitor has no token. The old flow redirected them to the
+   * login page, whose "continue as guest" link pointed back here — an
+   * infinite loop with no way into the app. Now a guest identity is minted
+   * on demand and the visitor lands in the workspace immediately; the
+   * login/register page is offered for people who want their work to
+   * follow them across devices.
+   * ------------------------------------------------------------------ */
   useEffect(() => {
-    const token = localStorage.getItem("rl_token");
-    if (!token) {
-      nav("/app/auth");
-      return;
-    }
-    api.token = token;
-    api.me().then((d: any) => {
-      setUser(d);
-      if (d.role === "admin") setIsAdmin(true);
-    }).catch(() => {
-      localStorage.removeItem("rl_token");
-      nav("/app/auth");
-    }).finally(() => setAuthLoading(false));
+    let cancelled = false;
+
+    (async () => {
+      try {
+        let token = localStorage.getItem("rl_token");
+        if (!token) {
+          const g: any = await api.guestLogin();
+          if (cancelled) return;
+          if (!g?.token) throw new Error("guest identity unavailable");
+          api.setToken(g.token);
+          if (g.refreshToken) api.setRefreshToken(g.refreshToken);
+          token = g.token;
+          setNotice("Browsing as a guest — create an account to keep your work across devices.");
+          setTimeout(() => !cancelled && setNotice(""), 7000);
+        } else {
+          api.token = token;
+        }
+
+        const d: any = await api.me();
+        if (cancelled) return;
+        setUser(d);
+        if (d.role === "admin") setIsAdmin(true);
+      } catch {
+        if (!cancelled) {
+          api.clearToken();
+          nav("/app/auth");
+        }
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [nav]);
 
   if (authLoading || !user) {
@@ -105,17 +138,28 @@ export function Layout() {
                   end={l.end}
                   onClick={onNavigate}
                   className={({ isActive }) =>
-                    `group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition duration-150 ${
+                    `group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-all duration-200 ease-out ${
                       isActive
-                        ? "bg-gradient-to-r from-indigo-600/10 to-violet-600/5 font-semibold text-indigo-700 dark:from-indigo-500/20 dark:to-transparent dark:text-indigo-200"
-                        : "font-medium text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white"
+                        ? "bg-gradient-to-r from-indigo-600/12 to-violet-600/5 font-semibold text-indigo-700 shadow-[inset_0_0_0_1px_rgba(99,102,241,0.16)] dark:from-indigo-500/20 dark:to-transparent dark:text-indigo-200"
+                        : "font-medium text-slate-600 hover:translate-x-0.5 hover:bg-slate-200/70 hover:text-slate-900 hover:shadow-sm dark:text-slate-400 dark:hover:bg-white/[0.07] dark:hover:text-white"
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      <span className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-indigo-600 transition-all duration-200 dark:bg-indigo-400 ${isActive ? "opacity-100" : "opacity-0"}`} />
-                      <l.icon size={16} className={isActive ? "text-indigo-600 dark:text-indigo-300" : "text-slate-400 transition group-hover:text-slate-600 dark:group-hover:text-slate-200"} />
+                      <span
+                        className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-indigo-500 to-violet-500 transition-all duration-300 dark:from-indigo-300 dark:to-violet-300 ${
+                          isActive ? "opacity-100" : "scale-y-0 opacity-0"
+                        }`}
+                      />
+                      <l.icon
+                        size={16}
+                        className={`transition-transform duration-200 ${
+                          isActive
+                            ? "text-indigo-600 dark:text-indigo-300"
+                            : "text-slate-400 group-hover:scale-110 group-hover:text-slate-600 dark:group-hover:text-slate-200"
+                        }`}
+                      />
                       {l.label}
                     </>
                   )}
@@ -132,11 +176,13 @@ export function Layout() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl dark:border-white/10 dark:bg-[#0a0f1e]/80">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-          <button onClick={() => nav("/")} className="flex items-center gap-2.5 rounded-xl pr-2 transition hover:opacity-80">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25">
+          <button onClick={() => nav("/")} className="group flex items-center gap-2.5 rounded-xl pr-2 transition hover:opacity-90">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-600/25 transition-transform duration-300 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-indigo-600/40">
               <Sparkles size={17} />
             </span>
-            <span className="hidden text-[15px] font-semibold tracking-tight sm:block">ResearchLens <span className="text-muted">AI</span></span>
+            <span className="hidden text-[15px] font-semibold tracking-tight sm:block">
+              ResearchLens <span className="text-muted">AI</span>
+            </span>
           </button>
 
           <button
@@ -149,7 +195,13 @@ export function Layout() {
           </button>
 
           <div className="ml-auto flex items-center gap-2">
-            <div className="hidden items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 py-1.5 pl-1.5 pr-3 dark:border-white/10 dark:bg-white/[0.05] sm:flex">
+            {notice && (
+              <span className="hidden items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-medium text-amber-800 animate-fade-in md:inline-flex dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                <User size={11} /> {notice}
+              </span>
+            )}
+
+            <div className="hidden items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 py-1.5 pl-1.5 pr-3 transition hover:border-slate-300 hover:shadow-sm sm:flex dark:border-white/10 dark:bg-white/[0.05] dark:hover:border-white/20">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-bold text-white">
                 {initials}
               </span>
@@ -161,8 +213,11 @@ export function Layout() {
               className="icon-btn"
               onClick={() => { const d = !dark; setDark(d); localStorage.setItem("rl_dark", String(d)); }}
               aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+              title={dark ? "Switch to light mode" : "Switch to dark mode"}
             >
-              {dark ? <Sun size={17} /> : <Moon size={17} />}
+              <span className="transition-transform duration-300 hover:rotate-45 inline-flex">
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
+              </span>
             </button>
 
             <button className="btn-primary hidden sm:inline-flex" onClick={() => nav("/app/upload")}>
@@ -170,8 +225,12 @@ export function Layout() {
             </button>
 
             <button
-              className="icon-btn"
-              onClick={() => { api.token = ""; localStorage.removeItem("rl_token"); nav("/app/auth"); }}
+              className="icon-btn hover:!bg-rose-500/10 hover:!text-rose-500"
+              onClick={async () => {
+                try { await api.req("/api/auth/logout", { method: "POST" }); } catch { /* best effort */ }
+                api.clearToken();
+                nav("/app/auth");
+              }}
               aria-label="Log out"
               title="Log out"
             >
@@ -194,8 +253,8 @@ export function Layout() {
       {/* Mobile drawer */}
       {menuOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-72 overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0d1428]">
+          <div className="absolute inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-72 animate-slide-in overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0d1428]">
             <div className="mb-5 flex items-center gap-2.5">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">
                 <Sparkles size={17} />
@@ -209,6 +268,9 @@ export function Layout() {
                 <p className="mt-1 opacity-80">You have admin privileges on this deployment.</p>
               </div>
             )}
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[11px] text-muted dark:border-white/10">
+              <Command size={12} /> ResearchLens AI · v1.1
+            </div>
           </aside>
         </div>
       )}
@@ -216,11 +278,13 @@ export function Layout() {
       <nav className="fixed bottom-0 left-0 right-0 z-30 flex gap-1 overflow-x-auto border-t border-slate-200 bg-white/90 p-2 backdrop-blur-xl lg:hidden dark:border-white/10 dark:bg-[#0a0f1e]/90">
         {LINKS.filter((l) => ["Dashboard", "Upload", "Explorer", "Chat", "Graph"].includes(l.label)).map((l) => (
           <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) =>
-            `flex flex-1 flex-col items-center gap-1 whitespace-nowrap rounded-xl px-2 py-1.5 text-[11px] font-medium transition ${
-              isActive ? "bg-indigo-600/10 text-indigo-700 dark:text-indigo-300" : "text-slate-500 dark:text-slate-400"
+            `flex flex-1 flex-col items-center gap-1 whitespace-nowrap rounded-xl px-2 py-1.5 text-[11px] font-medium transition-all duration-200 ${
+              isActive
+                ? "bg-indigo-600/12 text-indigo-700 shadow-[inset_0_0_0_1px_rgba(99,102,241,0.18)] dark:bg-indigo-500/20 dark:text-indigo-300"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/[0.06]"
             }`}
           >
-            <l.icon size={16} /> {l.label}
+            <l.icon size={16} className="transition-transform duration-200" /> {l.label}
           </NavLink>
         ))}
       </nav>
@@ -229,7 +293,10 @@ export function Layout() {
   );
 }
 
-export function Card({ children, className = "" }: any) { return <div className={`card p-5 ${className}`}>{children}</div>; }
+export function Card({ children, className = "" }: any) {
+  return <div className={`card p-5 ${className}`}>{children}</div>;
+}
+
 export function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: any }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -241,6 +308,7 @@ export function PageTitle({ title, sub, action }: { title: string; sub?: string;
     </div>
   );
 }
+
 export function Empty({ text, action }: { text: string; action?: any }) {
   return (
     <div className="card flex flex-col items-center justify-center gap-3 px-6 py-14 text-center">
@@ -249,11 +317,15 @@ export function Empty({ text, action }: { text: string; action?: any }) {
     </div>
   );
 }
+
 export function ScoreBar({ v }: { v: number }) {
   const c = v >= 70 ? "bg-rose-500" : v >= 40 ? "bg-amber-500" : "bg-emerald-500";
   return (
     <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
-      <div className={`h-full rounded-full ${c} transition-all duration-500`} style={{ width: `${Math.min(100, v)}%` }} />
+      <div
+        className={`h-full rounded-full ${c} transition-all duration-700 ease-out`}
+        style={{ width: `${Math.min(100, Math.max(0, v))}%` }}
+      />
     </div>
   );
 }

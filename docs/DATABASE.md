@@ -9,16 +9,31 @@ drop straight into the `vector(384)` column when switching providers.
 `paper_authors` (position) · `topics` · `paper_topics` · `paper_sections` ·
 `paper_chunks` (embedding JSON in dev / vector in prod) · `citations` ·
 `documents` (stage, progress, report_json) · `similarity_results` ·
-`ingestion_jobs`.
+`ingestion_jobs` · `saved_papers` · `refresh_tokens` · `audit_log` ·
+`schema_migrations`.
 
-**Indexing:** `idx_chunks_paper`, `idx_papers_title`; prod adds HNSW +
-GIN(trgm/search). Duplicate detection: DOI unique + title lookup + C FNV-1a
+**Indexes:** `idx_chunks_paper`, `idx_papers_title`, `idx_documents_user`,
+`idx_ingestion_user`, `idx_refresh_user`, `idx_audit_created`; prod adds HNSW
++ GIN(trgm/search). Duplicate detection: DOI unique + title lookup + C FNV-1a
 fingerprint of normalized text.
 
-**Migrations/seeding:** `npm run migrate` (sqlite schema) · `npm run seed`
-(18 synthetic DEMO papers + citation chain + sample upload).
-`--clear` flag wipes papers first. Demo rows carry `is_demo=1` and are badged
-in every UI surface — never real citations.
+**Migrations/seeding:** `npm run migrate` (idempotent — it inspects
+`PRAGMA table_info` and adds missing columns, so an existing database is
+upgraded in place, then applies `schema.sql` for anything new) ·
+`npm run seed` (31 curated demo papers + a 31-edge citation network + section
+chunks). `--clear` wipes papers first.
+
+**Demo rows carry `is_demo = 1`** and are badged `DEMO` in every UI surface.
+They are *demo records*: the titles point at well-known papers, but the
+abstracts, venues and citation counts shipped in the seed are written for the
+demo and are not the publishers' metadata. The badge exists precisely so they
+can never be mistaken for verified citations. Real, verifiable metadata arrives
+through ingestion, which stores the source DOI/URL next to the paper.
+
+**`refresh_tokens`** stores only a SHA-256 hash of the token, so a leaked
+database row cannot be replayed as a session. **`audit_log`** records
+authentication, authorisation and ingestion events with a timestamp and the
+client IP.
 
 **Portability notes (read before deploying to Postgres):** the dev store is
 SQLite; `migrations/postgres.sql` is the production DDL. Three divergences to

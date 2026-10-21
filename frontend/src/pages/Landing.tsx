@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Upload, Brain, Network, MessagesSquare, ShieldAlert, ArrowRight, GitCompare,
-  BookMarked, Cpu, Sparkles, CheckCircle2,
+  BookMarked, Cpu, Sparkles, CheckCircle2, ShieldCheck,
 } from "lucide-react";
 
 const FEATS = [
@@ -41,6 +41,12 @@ const FEATS = [
     tint: "from-fuchsia-500 to-purple-600",
     t: "Literature review generator",
     d: "A theme-wise outline built only from papers actually retrieved for your topic — no fabricated citations, ever.",
+  },
+  {
+    icon: ShieldCheck,
+    tint: "from-slate-600 to-slate-800",
+    t: "Security you can inspect",
+    d: "Rotating refresh tokens, bcrypt credentials, strict CSP, rate limits and per-account isolation — rendered from the live server config.",
   },
 ];
 
@@ -103,6 +109,9 @@ export function Landing() {
           <Link to="/app/algorithms" className="btn-secondary btn-lg">
             <Cpu size={17} /> How the algorithms work
           </Link>
+          <Link to="/app/security" className="btn-secondary btn-lg">
+            <ShieldCheck size={17} /> Security posture
+          </Link>
         </div>
 
         <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">
@@ -131,7 +140,9 @@ export function Landing() {
 
       {/* ---------- features ---------- */}
       <h2 className="mt-16 text-2xl font-semibold tracking-tight text-body">What you get</h2>
-      <p className="mt-1.5 text-sm text-muted">Six analysis surfaces, all grounded in what is actually indexed.</p>
+      <p className="mt-1.5 text-sm text-muted">
+        Seven analysis surfaces, all grounded in what is actually indexed.
+      </p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATS.map((f, i) => (

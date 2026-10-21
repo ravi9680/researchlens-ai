@@ -1,3 +1,5 @@
+import { buildVector, cosineSafe, LOCAL_DIM } from "./hashing.js";
+
 export function tokenize(text: string): string[] {
   return text.toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter((t) => t.length > 1);
 }
@@ -15,29 +17,18 @@ export function jaccard(a: string, b: string): number {
 }
 
 export function cosine(a: number[], b: number[]): number {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-  if (!na || !nb) return 0;
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+  // Tolerates vectors of different widths (a dimension mismatch between two
+  // providers must degrade to "no similarity", never to a garbage number).
+  return cosineSafe(a, b);
 }
 
-/** Deterministic 384-dim hashed embedding (local provider). Modular: swap with OpenAI/etc. */
-export function localEmbed(text: string, dim = 384): number[] {
-  const vec = new Array(dim).fill(0);
-  const tokens = tokenize(text);
-  for (const tok of tokens) {
-    let h1 = 2166136261, h2 = 16777619;
-    for (let i = 0; i < tok.length; i++) {
-      h1 ^= tok.charCodeAt(i); h1 = Math.imul(h1, 16777619);
-      h2 ^= tok.charCodeAt(i) + i * 31; h2 = Math.imul(h2, 2166136261);
-    }
-    const idx = Math.abs(h1) % dim;
-    const idx2 = Math.abs(h2) % dim;
-    vec[idx] += 1; vec[idx2] += 0.5;
-  }
-  // length-normalize
-  const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
-  return vec.map((v) => v / norm);
+/** Deterministic hashed embedding without IDF weighting.
+ *  This is the plain mirror of the C-engine hashing scheme; the production
+ *  path (services/embedding.ts) adds IDF weights on top of the same hash. */
+export function localEmbed(text: string, dim = LOCAL_DIM): number[] {
+  const tf = new Map<string, number>();
+  for (const tok of tokenize(text)) tf.set(tok, (tf.get(tok) || 0) + 1);
+  return buildVector(tf, dim);
 }
 
 export function chunkText(text: string, targetWords = 220, overlap = 40): string[] {

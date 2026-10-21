@@ -40,3 +40,16 @@ CREATE TABLE IF NOT EXISTS saved_papers (
   saved_at TEXT DEFAULT (datetime('now')),
   UNIQUE (user_id, paper_id)
 );
+-- Rotating refresh tokens. Storing a hash (not the token) means a leaked
+-- database row cannot be replayed as a session.
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
+-- Security audit trail (logins, admin actions, rejected uploads).
+CREATE TABLE IF NOT EXISTS audit_log (
+  id TEXT PRIMARY KEY, event TEXT NOT NULL, ip TEXT DEFAULT '', user_id TEXT DEFAULT '',
+  detail TEXT DEFAULT '{}', created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);

@@ -20,6 +20,7 @@ import { Auth } from "./pages/Auth";
 import { GraphLab } from "./pages/GraphLab";
 import { Compare } from "./pages/Compare";
 import { Review } from "./pages/Review";
+import { Security } from "./pages/Security";
 
 // Error boundary to prevent one crash from taking down the whole app
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -78,6 +79,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="review" element={<Review />} />
               <Route path="saved" element={<Saved />} />
               <Route path="algorithms" element={<Algorithms />} />
+              <Route path="security" element={<Security />} />
               <Route path="settings" element={<Settings />} />
               <Route path="*" element={<NotFound />} />
             </Route>

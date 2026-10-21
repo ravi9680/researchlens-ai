@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recha
 import { api } from "../lib/api";
 import { Card, PageTitle, ScoreBar, Empty } from "../components/Layout";
 import {
-  Trash2, BookOpen, Users, Tags, Gauge, Upload, Layers, Network, Cpu, Database, ArrowRight,
+  Trash2, BookOpen, Users, Tags, Gauge, Upload, Layers, Network, Cpu, Database, ArrowRight, ShieldCheck,
 } from "lucide-react";
 
 export function Dashboard() {
@@ -58,16 +58,16 @@ export function Dashboard() {
       />
 
       {/* ---------- stat cards ---------- */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(({ k: key, v, icon: Icon, tint }) => (
           <div key={key} className="card card-hover group relative overflow-hidden p-5">
-            <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full bg-gradient-to-br ${tint} opacity-[0.07] transition duration-300 group-hover:opacity-[0.14]`} />
+            <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full bg-gradient-to-br ${tint} opacity-[0.07] transition-all duration-500 group-hover:scale-150 group-hover:opacity-[0.16]`} />
             <div className="relative flex items-start justify-between">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-faint">{key}</p>
                 <p className="stat-num mt-1.5 text-3xl font-semibold text-body">{String(v)}</p>
               </div>
-              <span className={`grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br ${tint} text-white shadow-md`}>
+              <span className={`grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br ${tint} text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:shadow-lg`}>
                 <Icon size={17} />
               </span>
             </div>
@@ -202,22 +202,22 @@ export function Dashboard() {
       )}
 
       {/* ---------- quick links ---------- */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="stagger mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { to: "/app/explorer", label: "Browse papers", d: "Search the knowledge base", icon: BookOpen },
           { to: "/app/graph", label: "Citation graph", d: "BFS & PageRank exploration", icon: Network },
           { to: "/app/review", label: "Literature review", d: "Grounded theme outline", icon: Layers },
-          { to: "/app/algorithms", label: "Algorithms", d: "Every DS, with complexity", icon: Cpu },
+          { to: "/app/security", label: "Security", d: "Live posture & controls", icon: ShieldCheck },
         ].map((q) => (
           <Link key={q.to} to={q.to} className="card card-hover group flex items-center gap-3 p-4">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-600/10 text-indigo-600 transition group-hover:scale-105 dark:bg-indigo-500/15 dark:text-indigo-300">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-600/10 text-indigo-600 transition-all duration-300 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white dark:bg-indigo-500/15 dark:text-indigo-300">
               <q.icon size={18} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-body">{q.label}</span>
               <span className="block truncate text-xs text-muted">{q.d}</span>
             </span>
-            <ArrowRight size={15} className="shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
+            <ArrowRight size={15} className="shrink-0 text-faint transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
           </Link>
         ))}
       </div>

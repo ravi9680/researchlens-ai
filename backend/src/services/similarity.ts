@@ -1,5 +1,5 @@
 import { cosine, fuzzyRatio, jaccard, chunkText, splitSentences } from "./textUtils.js";
-import { embedSync } from "./embedding.js";
+import { embed, embedSync } from "./embedding.js";
 import { all } from "../db.js";
 
 export interface PassageMatch {
@@ -51,15 +51,40 @@ function classifyMatch(userP: string, srcP: string, sem: number): PassageMatch["
   return "CONCEPTUAL";
 }
 
-export function analyzeDocument(fullText: string, opts: { topPapers?: number } = {}): {
+/* ------------------------------------------------------------------
+ * Embedding memo.
+ *
+ * The passage matcher compares every user sentence against every sentence of
+ * every candidate chunk. Embedding inside that loop meant thousands of
+ * vector builds per analysis. Both sides are memoised by their text, so the
+ * work drops to "one embedding per distinct sentence".
+ * ------------------------------------------------------------------ */
+class Memo {
+  private cache = new Map<string, number[]>();
+  constructor(private embedder: (t: string) => Promise<number[]>) {}
+  async get(text: string): Promise<number[]> {
+    const hit = this.cache.get(text);
+    if (hit) return hit;
+    const v = await this.embedder(text);
+    this.cache.set(text, v);
+    return v;
+  }
+  get size() { return this.cache.size; }
+}
+
+export async function analyzeDocument(
+  fullText: string,
+  opts: { topPapers?: number; userChunks?: string[] } = {}
+): Promise<{
   overallSimilarity: number;
   similarPapers: SimilarPaper[];
   passageMatches: PassageMatch[];
   sectionScores: Record<string, number>;
-} {
+}> {
   const topPapers = opts.topPapers || 8;
-  const userChunks = chunkText(fullText, 180, 30).slice(0, 24);
+  const userChunks = opts.userChunks || chunkText(fullText, 180, 30).slice(0, 24);
   const userSents = splitSentences(fullText).slice(0, 60);
+
   const papers = all<any>("SELECT * FROM papers");
   const meta = new Map(papers.map((p: any) => [p.id, p]));
   const authorsByPaper = new Map<string, string[]>();
@@ -68,10 +93,12 @@ export function analyzeDocument(fullText: string, opts: { topPapers?: number } =
     authorsByPaper.get(row.paper_id)!.push(row.name);
   }
 
+  const memo = new Memo(embed);
+
   // Aggregate chunk-level semantic hits per paper
   const paperScores = new Map<string, { sum: number; n: number; best: number; sections: Record<string, number[]>; matches: PassageMatch[] }>();
   for (const uc of userChunks) {
-    const q = embedSync(uc);
+    const q = await memo.get(uc);
     const hits = semanticSearch(q, 24);
     for (const { chunk, score } of hits) {
       if (score < 0.12) continue;
@@ -87,28 +114,41 @@ export function analyzeDocument(fullText: string, opts: { topPapers?: number } =
   const passageMatches: PassageMatch[] = [];
   const candidateChunks = new Map<string, KBChunk[]>();
   for (const uc of userChunks.slice(0, 10)) {
-    for (const { chunk, score } of semanticSearch(embedSync(uc), 8)) {
+    for (const { chunk, score } of semanticSearch(await memo.get(uc), 8)) {
       if (score < 0.2) continue;
       if (!candidateChunks.has(chunk.paper_id)) candidateChunks.set(chunk.paper_id, []);
       if (candidateChunks.get(chunk.paper_id)!.length < 4) candidateChunks.get(chunk.paper_id)!.push(chunk);
     }
   }
+
+  /* Source sentences are embedded once per chunk and reused for every user
+   * sentence — this is the change that removes the hot loop's O(n²) hashing. */
+  const sourceSentences = new Map<string, { text: string; vec: number[] }[]>();
+  for (const chunks of candidateChunks.values()) {
+    for (const c of chunks) {
+      if (sourceSentences.has(c.id)) continue;
+      const sents = splitSentences(c.content).slice(0, 6);
+      const vecs: { text: string; vec: number[] }[] = [];
+      for (const ss of sents) vecs.push({ text: ss, vec: await memo.get(ss) });
+      sourceSentences.set(c.id, vecs);
+    }
+  }
+
   for (const sent of userSents.slice(0, 40)) {
     if (sent.split(" ").length < 8) continue;
-    const sq = embedSync(sent);
+    const sq = await memo.get(sent);
     for (const [pid, chunks] of candidateChunks) {
       for (const c of chunks) {
-        const srcSents = splitSentences(c.content).slice(0, 6);
-        for (const ss of srcSents) {
-          const sem = cosine(sq, embedSync(ss));
-          const lex = jaccard(sent, ss);
+        for (const ss of sourceSentences.get(c.id) || []) {
+          const sem = cosine(sq, ss.vec);
+          const lex = jaccard(sent, ss.text);
           const combined = 0.7 * sem + 0.3 * lex;
           if (combined > 0.5) {
             const p = meta.get(pid);
             passageMatches.push({
-              userPassage: sent.slice(0, 400), sourcePassage: ss.slice(0, 400),
+              userPassage: sent.slice(0, 400), sourcePassage: ss.text.slice(0, 400),
               similarity: Math.round(combined * 100),
-              matchType: classifyMatch(sent, ss, sem),
+              matchType: classifyMatch(sent, ss.text, sem),
               paperId: pid, paperTitle: p?.title || "Unknown", section: c.section,
             });
           }
@@ -142,7 +182,9 @@ export function analyzeDocument(fullText: string, opts: { topPapers?: number } =
     };
   }).sort((a, b) => b.score - a.score).slice(0, topPapers);
 
-  const overall = ranked.length ? Math.round(ranked.slice(0, 3).reduce((s, r) => s + r.score, 0) / Math.min(3, ranked.length)) : 0;
+  const overall = ranked.length
+    ? Math.round(ranked.slice(0, 3).reduce((s, r) => s + r.score, 0) / Math.min(3, ranked.length))
+    : 0;
 
   // Section-level scores for the user doc: best paper match per section name
   const sectionScores: Record<string, number> = {};

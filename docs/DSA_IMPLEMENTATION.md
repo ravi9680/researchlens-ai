@@ -1,6 +1,6 @@
 # DSA Implementation (viva-ready)
 
-C engine: `algorithm_engine/` (C11, `-Wall -Wextra`, `make test`, `make asan`).
+C++ engine: `algorithm_engine/` (C++17, `-Wall -Wextra`, `make test`, `make asan`).
 Bridge: `backend/src/services/cEngine.ts` (JSON stdin/stdout, 8s timeout,
 1.5MB cap, JS fallback). Mirror implementations: `backend/src/services/textUtils.ts`.
 
@@ -9,14 +9,14 @@ Bridge: `backend/src/services/cEngine.ts` (JSON stdin/stdout, 8s timeout,
 | Structure | File | Problem solved |
 |---|---|---|
 | Arrays / strings / structs | everywhere | bounded buffers, candidate/score records |
-| Linked list (chaining) | `hash_table.c` | hash collisions in term-frequency maps |
-| Hash table | `hash_table.c` | O(1) term freq for keyword extraction |
-| Trie | `inverted_index.c` | keyword + prefix search (`trie_search/prefix_count`) |
-| Min-heap / priority queue | `ranking.c` | top-K papers & TF-IDF hits in O(n log K) |
-| BST | `ranking.c` | year-indexed metadata, range counts |
-| Graph (adjacency lists) | `graph.c` | citation relationships |
-| Queue (circular) | `graph.c` | BFS frontier |
-| Stack (explicit array) | `graph.c` | iterative DFS |
+| Linked list (chaining) | `hash_table.cpp` | hash collisions in term-frequency maps |
+| Hash table | `hash_table.cpp` | O(1) term freq for keyword extraction |
+| Trie | `inverted_index.cpp` | keyword + prefix search (`trie_search/prefix_count`) |
+| Min-heap / priority queue | `ranking.cpp` | top-K papers & TF-IDF hits in O(n log K) |
+| BST | `ranking.cpp` | year-indexed metadata, range counts |
+| Graph (adjacency lists) | `graph.cpp` | citation relationships |
+| Queue (circular) | `graph.cpp` | BFS frontier |
+| Stack (explicit array) | `graph.cpp` | iterative DFS |
 | Dynamic allocation | all | postings growth, JSON parsing, graph edges |
 
 ## Algorithms → why + complexity
@@ -55,9 +55,10 @@ with semantic search, reported side-by-side, never merged silently.
 - Jaccard/cosine are O(a·b) on small chunks only; KB scale-up = HNSW (pgvector).
 - PageRank = graph centrality, never research quality; citation counts likewise.
 - Custom crypto was deliberately NOT implemented (FNV-1a for indexing only).
+- The engine is strictly lexical: it never claims to understand meaning.
 
 ## Tests
 
-`make test` → 28 assertions (`tests/test_all.c`) covering every row above;
-backend `vitest` mirrors JS fallbacks (7 tests). Sample I/O values in this doc
-are the actual test vectors.
+`make test` → 33 assertions (`tests/test_all.cpp`) covering every row above;
+backend `vitest` mirrors JS fallbacks (11 unit tests). Sample I/O values in
+this doc are the actual test vectors.

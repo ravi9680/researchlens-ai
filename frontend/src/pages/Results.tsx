@@ -6,7 +6,7 @@ import { Card, PageTitle, ScoreBar, Empty } from "../components/Layout";
 import {
   Download, ChevronDown, ChevronUp, FileText, Zap, Brain,
   TrendingUp, AlertTriangle, CheckCircle, BookOpen, Target,
-  BarChart2, ArrowRight, Layers, Info
+  BarChart2, ArrowRight, Layers, Info, Braces, Gauge
 } from "lucide-react";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -116,12 +116,30 @@ export function Results() {
             {r.filename} · {(r.userChunkCount || 0)} chunks analysed · {r.topics?.[0]?.topic}
           </p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => window.print()}
-        >
-          <Download size={15} /> Export PDF
-        </button>
+        <div className="flex flex-wrap items-center gap-2 no-print">
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              try {
+                const data = await api.exportReport(id);
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `researchlens-report-${id.slice(0, 8)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (e: any) {
+                alert(e.message);
+              }
+            }}
+          >
+            <Braces size={15} /> Export JSON
+          </button>
+          <button className="btn-primary" onClick={() => window.print()}>
+            <Download size={15} /> Export PDF
+          </button>
+        </div>
       </div>
 
       {/* ── Top stats row ── */}
@@ -136,6 +154,25 @@ export function Results() {
             <Level l={r.ai?.level || "LOW"} />
             <p className="mt-3 text-4xl font-bold">{r.ai?.score}<span className="text-lg text-muted">/100</span></p>
           </div>
+          {/* The measured features behind the score — the number alone is
+              not evidence, the measurements are. */}
+          {r.ai?.metrics && (
+            <dl className="mt-4 space-y-1.5 border-t border-slate-200/70 pt-3 text-xs dark:border-white/10">
+              {([
+                ["Burstiness (CV)", r.ai.metrics.sentenceLengthCv, 0.35, "lower = more uniform"],
+                ["Vocabulary (TTR)", r.ai.metrics.typeTokenRatio, 0.32, "lower = more repetitive"],
+                ["Transitions /1k", r.ai.metrics.transitionsPer1k, 2.5, "higher = more generic"],
+                ["Repeated 3-grams", r.ai.metrics.repeatedTrigrams, 6, "higher = more formulaic"],
+              ] as [string, number, number, string][]).map(([k, v, th, hint]) => (
+                <div key={k} className="flex items-center justify-between gap-2">
+                  <dt className="text-muted">{k} <span className="text-faint">({hint})</span></dt>
+                  <dd className={`stat-num font-semibold ${v >= th ? "text-amber-600 dark:text-amber-400" : "text-body"}`}>
+                    {v}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
           <p className="mt-3 text-xs text-muted leading-relaxed">{r.ai?.disclaimer}</p>
         </Card>
 

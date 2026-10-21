@@ -5,7 +5,8 @@ import { api } from "../lib/api";
 import { useSaved } from "../lib/saved";
 import { Card, PageTitle, Empty } from "../components/Layout";
 import {
-  Bookmark, Bookmark as BookmarkFill, GitCompare, Loader2, Search, Inbox, X, AlertCircle,
+  Bookmark, Bookmark as BookmarkFill, GitCompare, Loader2, Search, Inbox, X, AlertCircle, Gauge,
+  Network, BookOpen,
 } from "lucide-react";
 
 export function Explorer() {
@@ -91,6 +92,9 @@ export function Explorer() {
             to={`/app/paper/${p.id}`}
             className={`card card-hover group relative p-4 ${selected.includes(p.id) ? "border-indigo-400 ring-2 ring-indigo-500/20 dark:border-indigo-400/60" : ""}`}
           >
+            {/* Accent rail that appears on hover — a cheap, strong
+                "this card is clickable" cue. */}
+            <span className="pointer-events-none absolute inset-y-3 left-0 w-0.5 scale-y-0 rounded-r-full bg-gradient-to-b from-indigo-500 to-violet-500 transition-transform duration-300 group-hover:scale-y-100" />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="font-semibold leading-snug text-body transition group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
@@ -100,6 +104,11 @@ export function Explorer() {
                   {p.is_demo && <span className="badge badge-amber">DEMO</span>}
                   {p.year && <span className="badge badge-slate">{p.year}</span>}
                   {p.citation_count > 0 && <span className="badge badge-sky">{p.citation_count} citations</span>}
+                  {typeof p.relevance === "number" && p.relevance > 0 && (
+                    <span className="badge badge-indigo gap-1">
+                      <Gauge size={10} /> relevance {p.relevance.toFixed(1)}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1.5 truncate text-xs text-muted">
                   {(p.authors || []).join(", ") || "Unknown authors"}
@@ -261,16 +270,18 @@ export function PaperDetails() {
   const { id = "" } = useParams();
   const saved = useSaved();
   const q = useQuery({ queryKey: ["paper", id], queryFn: () => api.paper(id) });
+  const cites = useQuery<any>({ queryKey: ["paper-cites", id], queryFn: () => api.paperCitations(id) });
 
   if (q.isLoading) return <div className="skel h-72" />;
   if (q.isError) return <Empty text="Paper not found." />;
   const p: any = q.data;
+  const cn: any = cites.data;
 
   return (
     <div>
       <PageTitle title={p.title} sub={`${(p.authors || []).join(", ")} · ${p.year ?? "—"} · ${p.venue || "—"}`} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2 no-print">
         <button
           onClick={() => saved.toggle(id)}
           className={`btn btn-sm ${saved.isSaved(id) ? "btn-secondary !border-amber-300 !bg-amber-50 !text-amber-700 dark:!border-amber-500/40 dark:!bg-amber-500/10 dark:!text-amber-300" : "btn-secondary"}`}
@@ -293,6 +304,45 @@ export function PaperDetails() {
           <span>Source: <span className="font-medium text-body">{p.source_url || "—"}</span></span>
         </div>
       </Card>
+
+      {/* ---------- citation neighbourhood ---------- */}
+      {cn && (cn.cites?.length > 0 || cn.citedBy?.length > 0) && (
+        <Card className="mt-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-body">
+            <Network size={15} className="text-indigo-600 dark:text-indigo-300" /> Citation neighbourhood
+          </h3>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            {([["References this paper", cn.cites], ["Cited by", cn.citedBy]] as [string, any[]][]).map(([label, rows]) => (
+              <div key={label}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-faint">
+                  {label} <span className="text-muted">({rows.length})</span>
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {rows.slice(0, 6).map((r: any) => (
+                    <li key={r.id}>
+                      <Link
+                        to={`/app/paper/${r.id}`}
+                        className="group flex items-start gap-2 rounded-lg border border-slate-200/70 px-2.5 py-1.5 transition hover:border-indigo-300 hover:bg-indigo-50/50 dark:border-white/10 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-500/[0.07]"
+                      >
+                        <BookOpen size={12} className="mt-1 shrink-0 text-indigo-500" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-body transition group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
+                            {r.title}
+                          </span>
+                          <span className="block text-[11px] text-faint">
+                            {r.year ?? "—"} {r.venue ? `· ${r.venue}` : ""}
+                          </span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                  {rows.length === 0 && <li className="text-sm text-muted">No indexed links yet.</li>}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="mt-4">
         <h3 className="text-sm font-semibold tracking-tight text-body">Indexed chunks</h3>

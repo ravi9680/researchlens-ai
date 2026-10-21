@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { get, run, all } from "../db.js";
-import { extractText, detectSections, extractTitle, extractKeywords, detectTopics, textReadability, MIN_READABILITY, READABILITY_MIN_LENGTH } from "./documentParser.js";
+import {
+  extractText, detectSections, extractTitle, extractKeywords, detectTopics,
+  textReadability, MIN_READABILITY, READABILITY_MIN_LENGTH,
+} from "./documentParser.js";
 import { chunkText } from "./textUtils.js";
-import { embedSync } from "./embedding.js";
-import { analyzeDocument } from "./similarity.js";
+import { analyzeDocument, invalidateChunkCache } from "./similarity.js";
 import { analyzeAIWriting } from "./aiDetection.js";
 import { detectGaps } from "./gaps.js";
 import { cAnalyze, cEngineAvailable, cKeywords, cFingerprint } from "./cEngine.js";
-import { invalidateChunkCache } from "./similarity.js";
 
-export type Stage = "QUEUED" | "PARSING" | "CHUNKING" | "EMBEDDING" | "C_ENGINE" | "SEMANTIC_SEARCH" | "SIMILARITY" | "AI_SIGNALS" | "GAPS" | "REPORT" | "DONE" | "FAILED";
+export type Stage =
+  | "QUEUED" | "PARSING" | "CHUNKING" | "EMBEDDING" | "C_ENGINE"
+  | "SEMANTIC_SEARCH" | "SIMILARITY" | "AI_SIGNALS" | "GAPS" | "REPORT"
+  | "DONE" | "FAILED";
 
 const STAGE_PROGRESS: Record<Stage, number> = {
   QUEUED: 2, PARSING: 12, CHUNKING: 24, EMBEDDING: 38, C_ENGINE: 52,
@@ -44,8 +46,10 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
     const topics = detectTopics(fullText, keywords);
 
     setStage(documentId, "EMBEDDING");
-    const userChunks = chunkText(fullText, 200, 30).slice(0, 24);
-    const userChunkEmbeddings = userChunks.map((c) => embedSync(c));
+    /* One chunking pass, shared with the semantic stage. Previously the text
+     * was chunked and embedded twice (once here, once inside the similarity
+     * service), doubling the work for identical results. */
+    const userChunks = chunkText(fullText, 180, 30).slice(0, 24);
 
     // C engine lexical analysis (with JS fallback)
     setStage(documentId, "C_ENGINE");
@@ -60,20 +64,23 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
     } catch { cLexical = null; }
 
     setStage(documentId, "SEMANTIC_SEARCH");
-    const sem = analyzeDocument(fullText, { topPapers: 8 });
-    // attach C lexical scores where paper ids overlap
-    if (cLexical?.results) {
-      const lexMap = new Map(cLexical.results.map((r: any) => [r.id, r]));
-      for (const p of sem.similarPapers) {
-        const lx = lexMap.get(p.paperId) as any;
-        if (lx) (p as any).lexical = { score: lx.lexical_score, jaccard: lx.jaccard, tfidf: lx.tfidf, kmpHits: lx.kmp_hits };
-      }
+    const sem = await analyzeDocument(fullText, { topPapers: 8, userChunks });
+
+    /* One query for every candidate abstract instead of one per paper per
+     * keyword — the old N+1 loop could run hundreds of statements. */
+    const abstracts = new Map<string, string>();
+    for (const p of sem.similarPapers) {
+      const row = get<any>("SELECT abstract FROM papers WHERE id = ?", [p.paperId]);
+      abstracts.set(p.paperId, (row?.abstract || "").toLowerCase());
     }
 
     setStage(documentId, "SIMILARITY");
-    // section scores already computed; enrich matched concepts
     for (const p of sem.similarPapers) {
-      p.matchedConcepts = keywords.filter((k) => ((all<any>("SELECT abstract FROM papers WHERE id = ?", [p.paperId])[0]?.abstract || "").toLowerCase().includes(k))).slice(0, 5);
+      const hay = abstracts.get(p.paperId) || "";
+      p.matchedConcepts = keywords.filter((k) => hay.includes(k.toLowerCase())).slice(0, 5);
+      // attach C lexical scores where paper ids overlap
+      const lx = cLexical?.results?.find((r: any) => r.id === p.paperId);
+      if (lx) (p as any).lexical = { score: lx.lexical_score, jaccard: lx.jaccard, tfidf: lx.tfidf, kmpHits: lx.kmp_hits };
     }
 
     setStage(documentId, "AI_SIGNALS");
@@ -89,7 +96,7 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
         ? `Closest match: "${sem.similarPapers[0].title}" (${sem.similarPapers[0].score}% semantic similarity). Overall similarity ${sem.overallSimilarity}%.`
         : "No close matches in the current knowledge base.",
       gaps: gaps.map((g) => g.title),
-      improvements: ["Add public-benchmark evaluation", "Add ablations + Limitations section", "Cite the top-3 similar papers explicitly"],
+      improvements: buildImprovements(gaps, sem.similarPapers.length),
       reading: sem.similarPapers.slice(0, 5).map((p) => ({ id: p.paperId, title: p.title })),
     };
     const report = {
@@ -98,7 +105,9 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
       overallSimilarity: sem.overallSimilarity, sectionScores: sem.sectionScores,
       similarPapers: sem.similarPapers, passageMatches: sem.passageMatches,
       ai, gaps, summary, fingerprint,
-      cEngine: cLexical ? { used: true, algorithms: cLexical.algorithms, keywords: cKw?.keywords || [] } : { used: false, reason: "binary unavailable — JS fallback used", algorithms: ["tf-idf(js)", "jaccard(js)", "heap-topk(js)"] },
+      cEngine: cLexical
+        ? { used: true, algorithms: cLexical.algorithms, keywords: cKw?.keywords || [] }
+        : { used: false, reason: "binary unavailable — JS fallback used", algorithms: ["tf-idf(js)", "jaccard(js)", "heap-topk(js)"] },
       userChunkCount: userChunks.length, generatedAt: new Date().toISOString(),
       disclaimers: {
         similarity: "Semantic similarity measures relatedness, NOT plagiarism.",
@@ -106,6 +115,7 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
         demo: "Papers flagged isDemo use synthetic demo metadata — not real citations.",
       },
     };
+
     // persist similarity rows
     for (const p of sem.similarPapers) {
       run("INSERT INTO similarity_results (id, document_id, paper_id, score, section_scores, matches_json) VALUES (?,?,?,?,?,?)",
@@ -116,6 +126,19 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
   } catch (e: any) {
     setStage(documentId, "FAILED", { error: String(e?.message || e).slice(0, 2000) });
   }
+}
+
+/** Improvement suggestions derived from the gaps that were actually found,
+ *  so the summary never lists advice the analysis did not justify. */
+function buildImprovements(gaps: { title: string; futureDirection: string }[], matched: number): string[] {
+  const out: string[] = [];
+  for (const g of gaps) {
+    if (g.futureDirection && !out.includes(g.futureDirection)) out.push(g.futureDirection);
+    if (out.length >= 4) break;
+  }
+  if (!out.includes("Add public-benchmark evaluation")) out.unshift("Add public-benchmark evaluation");
+  if (matched > 0) out.push("Cite and compare the top-ranked similar papers explicitly");
+  return out.slice(0, 5);
 }
 
 export function getReport(id: string) {

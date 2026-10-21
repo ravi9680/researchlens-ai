@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { Card, PageTitle, Empty } from "../components/Layout";
-import { Cpu, Info, LogOut, Settings2, Terminal, Layers } from "lucide-react";
+import { Cpu, Info, LogOut, Settings2, Terminal, Layers, ShieldCheck, ArrowRight } from "lucide-react";
 
 const ALGOS = [
   { name: "KMP string matching", why: "Exact pattern occurrences (overlapping) for passage evidence.", io: "text + pattern → count", tc: "O(n+m) time, O(m) space", where: "C engine: match_passages, analyze (phrase probes)" },
@@ -127,6 +128,24 @@ export function Settings() {
           ))}
         </div>
 
+        {/* Security is a first-class surface, not a footnote. */}
+        <Link
+          to="/app/security"
+          className="card-inset mt-5 flex items-start gap-3 transition hover:border-indigo-300 hover:bg-indigo-50/50 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-500/[0.07]"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500/12 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+            <ShieldCheck size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-body">Security posture</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">
+              View the live configuration — token lifetimes, password policy, headers, rate limits
+              and per-account isolation — rendered from the running server.
+            </p>
+          </div>
+          <ArrowRight size={15} className="mt-1 shrink-0 text-faint" />
+        </Link>
+
         <div className="note mt-5">
           Never put API keys in frontend code. AI-writing detection is probabilistic and can produce false
           positives and false negatives — it is never proof of authorship. Semantic similarity is not plagiarism.
@@ -135,7 +154,7 @@ export function Settings() {
 
         <button
           className="btn-danger btn-sm mt-5"
-          onClick={() => { api.token = ""; localStorage.removeItem("rl_token"); location.reload(); }}
+          onClick={() => { api.clearToken(); location.reload(); }}
         >
           <LogOut size={14} /> Log out (fresh guest on next visit)
         </button>

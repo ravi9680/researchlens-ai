@@ -1,15 +1,26 @@
 import fs from "node:fs";
 import { tokenize } from "./textUtils.js";
 import { all } from "../db.js";
+import { buildVector, LOCAL_DIM } from "./hashing.js";
 
 /* Modular embedding provider.
- *  local  (default, offline): IDF-weighted hashed 384-d vectors.
- *  openai (needs AI_API_KEY): text-embedding-3-small via REST, batched.
- * Switch with EMBEDDING_PROVIDER=openai, then run `npm run reembed`
- * (dimensions differ per provider, so the KB must be re-embedded).
- */
+ *
+ *   local  (default, offline) — IDF-weighted hashed 384-d vectors.
+ *   openai (needs AI_API_KEY) — text-embedding-3-small via REST, batched.
+ *
+ * Switch with EMBEDDING_PROVIDER=openai and then run `npm run reembed`:
+ * the two providers produce different dimensions, so the knowledge base must
+ * be re-embedded before the vectors are comparable.
+ *
+ * IMPORTANT: `DIM` is a live binding. When the OpenAI provider is active it
+ * becomes 1536, and every consumer that reads it (route handlers, the
+ * similarity service) automatically works with the new width. */
 
-export const DIM = 384;
+export const LOCAL_DIMENSION = LOCAL_DIM;
+
+/** Dimension of the vectors currently stored in the knowledge base. */
+export let DIM = LOCAL_DIM;
+
 const IDF_FILE = "./data/idf.json";
 
 let idfCache: Record<string, number> | null = null;
@@ -48,31 +59,20 @@ function loadIdf(): Record<string, number> {
 
 export function refreshIdf() { idfCache = null; loadIdf(); }
 
-function hash2(tok: string): [number, number] {
-  let h1 = 2166136261, h2 = 16777619;
-  for (let i = 0; i < tok.length; i++) {
-    h1 ^= tok.charCodeAt(i); h1 = Math.imul(h1, 16777619);
-    h2 ^= tok.charCodeAt(i) + i * 31; h2 = Math.imul(h2, 2166136261);
-  }
-  return [Math.abs(h1) % DIM, Math.abs(h2) % DIM];
-}
-
 /** IDF-weighted hashed embedding (deterministic, offline). */
 export function localEmbedWeighted(text: string): number[] {
   const idf = loadIdf();
-  const vec = new Array(DIM).fill(0);
-  const toks = tokenize(text);
   const tf = new Map<string, number>();
-  for (const t of toks) tf.set(t, (tf.get(t) || 0) + 1);
+  for (const t of tokenize(text)) tf.set(t, (tf.get(t) || 0) + 1);
   const defaultIdf = Math.log((idfN + 1) / 2) + 1;
+  const weights = new Map<string, number>();
   for (const [tok, c] of tf) {
-    const w = (1 + Math.log(c)) * (idf[tok] ?? defaultIdf);
-    const [i1, i2] = hash2(tok);
-    vec[i1] += w; vec[i2] += 0.5 * w;
+    weights.set(tok, (1 + Math.log(c)) * (idf[tok] ?? defaultIdf));
   }
-  const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
-  return vec.map((v) => v / norm);
+  return buildVector(weights, LOCAL_DIM);
 }
+
+/* ---------------- OpenAI provider ---------------- */
 
 async function openaiEmbedBatch(texts: string[]): Promise<number[][]> {
   const key = process.env.AI_API_KEY || "";
@@ -94,6 +94,9 @@ async function openaiEmbedBatch(texts: string[]): Promise<number[][]> {
         const v: number[] = d.embedding;
         const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
         out.push(v.map((x) => x / n));
+        // The model defines the width; record it so the rest of the app
+        // compares vectors of the same length.
+        if (v.length) DIM = v.length;
       }
     } finally { clearTimeout(t); }
   }
@@ -104,17 +107,50 @@ export function provider(): string {
   return (process.env.EMBEDDING_PROVIDER || "local").toLowerCase();
 }
 
+/** True when the OpenAI provider is configured *and* usable. */
+export function openaiConfigured(): boolean {
+  return provider() === "openai" && Boolean(process.env.AI_API_KEY);
+}
+
 /** Single-text embed with provider fallback (openai → local on any error). */
 export async function embed(text: string): Promise<number[]> {
   if (provider() === "openai") {
-    try { return (await openaiEmbedBatch([text]))[0]; }
-    catch (e) { console.warn("[embed] openai failed, local fallback:", (e as Error).message); }
+    try {
+      const v = (await openaiEmbedBatch([text]))[0];
+      if (v?.length) return v;
+    } catch (e) {
+      console.warn("[embed] openai failed, local fallback:", (e as Error).message);
+    }
   }
   return localEmbedWeighted(text);
 }
 
-/** Sync local embed (hot paths: search, analysis). */
+/** Batch embed — used by `npm run reembed` so the whole index can be rebuilt
+ *  with the active provider (this is what makes the OpenAI swap real). */
+export async function embedBatch(texts: string[]): Promise<number[][]> {
+  if (provider() === "openai") {
+    try {
+      const out = await openaiEmbedBatch(texts);
+      if (out.length) return out;
+    } catch (e) {
+      console.warn("[embed] openai batch failed, local fallback:", (e as Error).message);
+    }
+  }
+  return texts.map((t) => localEmbedWeighted(t));
+}
+
+/** Sync local embed (offline hot paths: search, analysis). */
 export function embedSync(text: string): number[] {
+  return localEmbedWeighted(text);
+}
+
+/** Sync embed that respects the active provider dimension. When OpenAI is
+ *  configured the KB holds OpenAI vectors, so a local query vector would be
+ *  meaningless — callers must use the async `embed()` in that case. */
+export function embedSyncSafe(text: string): number[] {
+  if (provider() === "openai") {
+    console.warn("[embed] embedSync called with the openai provider — vector widths differ.");
+  }
   return localEmbedWeighted(text);
 }
 

@@ -2,45 +2,87 @@ import { Router } from "express";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { randomUUID, createHash } from "node:crypto";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
 import { runAnalysis, getReport } from "./services/pipeline.js";
-import { cosine, jaccard } from "./services/textUtils.js";
+import { cosine, jaccard, tokenize } from "./services/textUtils.js";
 import { detectTopics, extractKeywords } from "./services/documentParser.js";
 import { cEngineInfo, cGraph, cEngineAvailable } from "./services/cEngine.js";
 import { startIngestJob, MAX_INGEST_COUNT } from "./services/ingestion.js";
 import { literatureReviewOutline } from "./services/gaps.js";
 import { semanticSearch } from "./services/similarity.js";
 import { embedSync, provider, DIM } from "./services/embedding.js";
+import {
+  hashPassword, verifyPassword, rehashIfWeak, signAccessToken, signRefreshToken,
+  verifyToken, isLocked, noteFailure, clearFailures, audit, clientIp, publicUser,
+} from "./services/auth.js";
+import { validatePassword, normalizeEmail, safeFilename } from "./middleware.js";
 
 export const router = Router();
 
-// Ensure saved_papers table exists on startup (for Render deployments)
-try {
-  run(`CREATE TABLE IF NOT EXISTS saved_papers (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, paper_id TEXT NOT NULL,
-    saved_at TEXT DEFAULT (datetime('now')),
-    UNIQUE (user_id, paper_id)
-  )`);
-} catch (e) {
-  console.log("saved_papers table init:", e);
+/* Ensure the auxiliary tables exist even when the server is started without
+ * `npm run migrate` (this is how Render boots the demo). */
+for (const ddl of [
+  `CREATE TABLE IF NOT EXISTS saved_papers (
+     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, paper_id TEXT NOT NULL,
+     saved_at TEXT DEFAULT (datetime('now')), UNIQUE (user_id, paper_id))`,
+  `CREATE TABLE IF NOT EXISTS refresh_tokens (
+     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL,
+     expires_at TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')))`,
+  `CREATE TABLE IF NOT EXISTS audit_log (
+     id TEXT PRIMARY KEY, event TEXT NOT NULL, ip TEXT DEFAULT '', user_id TEXT DEFAULT '',
+     detail TEXT DEFAULT '{}', created_at TEXT DEFAULT (datetime('now')))`,
+]) {
+  try { run(ddl); } catch (e) { console.log("table init:", (e as Error).message); }
 }
 
-/* ---------- auth ---------- */
-function sign(user: any) {
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, config.jwtSecret, { expiresIn: "7d" });
+/* ================================================================
+   AUTH
+   ================================================================ */
+
+function sign(u: any) {
+  return signAccessToken(u);
 }
+
+/** Persist a refresh token as a hash so a database leak cannot be replayed. */
+function issueRefreshToken(userId: string): string {
+  const token = signRefreshToken({ id: userId, email: "", name: "", role: "user" });
+  const hash = createHash("sha256").update(token).digest("hex");
+  const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  run("INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES (?,?,?,?)",
+    [randomUUID(), userId, hash, expires]);
+  return token;
+}
+
+/** Accepts a valid access token; refresh tokens are explicitly rejected. */
 export function auth(req: any, res: any, next: any) {
   const h = req.headers.authorization || "";
   const tok = h.startsWith("Bearer ") ? h.slice(7) : "";
   if (!tok) return res.status(401).json({ error: "Missing token (demo login allowed)" });
-  try { (req as any).user = jwt.verify(tok, config.jwtSecret); next(); }
-  catch { res.status(401).json({ error: "Invalid token" }); }
+  try {
+    const payload: any = verifyToken(tok);
+    if (payload?.typ && payload.typ !== "access") {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    (req as any).user = payload;
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
 }
+
+/** Tight limiter for credential endpoints: slow down password guessing. */
+const authLimiter = rateLimit({
+  windowMs: config.authWindowMs,
+  max: config.authMaxAttempts,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: "Too many sign-in attempts. Please wait a few minutes and try again." },
+});
 
 /** Resolve a document the caller is allowed to mutate: its owner, or an admin.
  *  Legacy rows with NULL user_id predate ownership tracking and stay ownerless. */
@@ -61,7 +103,7 @@ function mergeGuestInto(guestToken: string | undefined, targetUserId: string): v
   if (!guestToken || !targetUserId) return;
   let guestId = "";
   try {
-    const payload: any = jwt.verify(guestToken, config.jwtSecret);
+    const payload: any = verifyToken(guestToken);
     guestId = String(payload?.id || "");
   } catch { return; }
   if (!guestId || guestId === targetUserId) return;
@@ -85,53 +127,143 @@ function mergeGuestInto(guestToken: string | undefined, targetUserId: string): v
   console.log(`[auth] merged guest ${guestId} into ${targetUserId}`);
 }
 
-router.post("/auth/register", async (req, res) => {
+router.post("/auth/register", authLimiter, async (req, res) => {
   const s = z.object({
     email: z.string().email(),
-    password: z.string().min(6),
+    password: z.string(),
     name: z.string().default(""),
     guestToken: z.string().optional(),
   }).safeParse(req.body);
   if (!s.success) return res.status(400).json({ error: "Invalid input" });
-  if (get("SELECT id FROM users WHERE email = ?", [s.data.email])) return res.status(409).json({ error: "Email exists" });
+
+  const email = normalizeEmail(s.data.email);
+  const pw = validatePassword(s.data.password);
+  if (!pw.ok) return res.status(400).json({ error: pw.error });
+  if (get("SELECT id FROM users WHERE email = ?", [email])) {
+    return res.status(409).json({ error: "Email exists" });
+  }
+
   const id = randomUUID();
   const existingCount = get<any>("SELECT COUNT(*) as c FROM users")?.c || 0;
   const role = existingCount === 0 ? "admin" : "user";
-  run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, s.data.email, await bcrypt.hash(s.data.password, 10), s.data.name, role]);
+  run(
+    "INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)",
+    [id, email, await hashPassword(s.data.password), s.data.name.slice(0, 80), role]
+  );
   const u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
   mergeGuestInto(s.data.guestToken, id);
-  res.json({ token: sign(u), user: { id, email: u.email, name: u.name, role: u.role } });
+  audit("auth.register", clientIp(req), { userId: id, email });
+  res.json({
+    token: sign(u),
+    refreshToken: issueRefreshToken(id),
+    user: publicUser(u),
+  });
 });
 
-router.post("/auth/login", async (req, res) => {
+router.post("/auth/login", authLimiter, async (req, res) => {
   const { email, password, guestToken } = req.body || {};
-  const u = get<any>("SELECT * FROM users WHERE email = ?", [email || ""]);
-  if (!u || !(await bcrypt.compare(String(password || ""), u.password_hash))) return res.status(401).json({ error: "Invalid credentials" });
+  const mail = normalizeEmail(email);
+  const ip = clientIp(req);
+
+  /* Uniform failure: the same message and status whether the account is
+   * unknown or the password is wrong, so the endpoint cannot be used to
+   * enumerate registered addresses. */
+  const INVALID = { error: "Invalid email or password" };
+
+  if (isLocked(mail, ip)) {
+    audit("auth.login_locked", ip, { email: mail });
+    return res.status(429).json({ error: "Too many failed attempts. Please wait before trying again." });
+  }
+
+  const u = get<any>("SELECT * FROM users WHERE email = ?", [mail]);
+  /* Always run a bcrypt comparison, even for an unknown account, so the
+   * response time does not reveal whether the address exists. */
+  const storedHash = u?.password_hash ?? "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv";
+  const ok = await verifyPassword(String(password ?? ""), storedHash);
+
+  if (!u || !ok) {
+    noteFailure(mail, ip);
+    audit("auth.login_failed", ip, { email: mail, known: Boolean(u) });
+    return res.status(401).json(INVALID);
+  }
+
+  clearFailures(mail, ip);
+  await rehashIfWeak(u.id, String(password), u.password_hash);
   mergeGuestInto(typeof guestToken === "string" ? guestToken : undefined, u.id);
-  res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name, role: u.role } });
+  audit("auth.login", ip, { userId: u.id });
+  res.json({
+    token: sign(u),
+    refreshToken: issueRefreshToken(u.id),
+    user: publicUser(u),
+  });
+});
+
+/** Rotate a refresh token: the old one is revoked, a new pair is issued. */
+router.post("/auth/refresh", (req, res) => {
+  const token = String(req.body?.refreshToken || "");
+  if (!token) return res.status(400).json({ error: "refreshToken required" });
+  let payload: any;
+  try { payload = verifyToken(token); } catch { return res.status(401).json({ error: "Invalid refresh token" }); }
+  if (payload?.typ !== "refresh") return res.status(401).json({ error: "Invalid refresh token" });
+
+  const hash = createHash("sha256").update(token).digest("hex");
+  const row = get<any>("SELECT * FROM refresh_tokens WHERE token_hash = ?", [hash]);
+  if (!row || row.revoked || new Date(row.expires_at).getTime() < Date.now()) {
+    return res.status(401).json({ error: "Refresh token expired or revoked" });
+  }
+  const u = get<any>("SELECT * FROM users WHERE id = ?", [payload.id]);
+  if (!u) return res.status(401).json({ error: "Account no longer exists" });
+
+  run("UPDATE refresh_tokens SET revoked = 1 WHERE id = ?", [row.id]);
+  audit("auth.refresh", clientIp(req), { userId: u.id });
+  res.json({ token: sign(u), refreshToken: issueRefreshToken(u.id), user: publicUser(u) });
+});
+
+/** Revoke every refresh token for the caller (sign-out everywhere). */
+router.post("/auth/logout", auth, (req: any, res) => {
+  run("UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?", [req.user.id]);
+  audit("auth.logout", clientIp(req), { userId: req.user.id });
+  res.json({ ok: true });
 });
 
 router.post("/auth/demo", async (_req, res) => {
   let u = get<any>("SELECT * FROM users WHERE email = ?", ["demo@researchlens.ai"]);
   if (!u) {
     const id = randomUUID();
-    run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, "demo@researchlens.ai", await bcrypt.hash(randomUUID(), 8), "Demo Researcher", "user"]);
+    run(
+      "INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)",
+      [id, "demo@researchlens.ai", await hashPassword(randomUUID()), "Demo Researcher", "user"]
+    );
     u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
   }
-  res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name, role: u.role } });
+  res.json({ token: sign(u), refreshToken: issueRefreshToken(u.id), user: publicUser(u) });
 });
 
-/** Anonymous identity. Lets the frontend recover from a 401 without a login form. */
-router.post("/auth/guest", (_req, res) => {
+/** Anonymous identity. Lets the frontend recover from a 401 without a login form.
+ *  A guest account has no usable password: the hash column holds an
+ *  unguessable random string rather than a bcrypt digest, so the account can
+ *  never be signed into. That also lets the merge logic identify it safely. */
+router.post("/auth/guest", (req, res) => {
+  const ip = clientIp(req);
+  const recent = get<any>(
+    "SELECT COUNT(*) as c FROM users WHERE email LIKE 'guest_%@guest.researchlens.local' AND created_at > datetime('now', '-1 hour')"
+  )?.c || 0;
+  if (recent > config.guestPerIpLimit * 50) {
+    return res.status(429).json({ error: "Too many guest sessions. Please try again later." });
+  }
   const id = randomUUID();
   const email = `guest_${id.slice(0, 8)}@guest.researchlens.local`;
-  run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, email, randomUUID(), "Guest Researcher", "user"]);
+  run(
+    "INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)",
+    [id, email, randomUUID(), "Guest Researcher", "user"]
+  );
   const u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
-  res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name, role: u.role } });
+  audit("auth.guest", ip, { userId: id });
+  res.json({ token: sign(u), refreshToken: issueRefreshToken(id), user: publicUser(u) });
 });
 
 router.get("/auth/me", auth, (req: any, res) => {
-  const u = get<any>("SELECT id, email, name, role FROM users WHERE id = ?", [(req as any).user.id]);
+  const u = get<any>("SELECT id, email, name, role FROM users WHERE id = ?", [req.user.id]);
   // The token may still be valid while the account behind it is gone (a guest
   // account is consumed when its work is merged into a real one). That is an
   // authentication failure, not a missing resource — 401 lets the client mint
@@ -141,22 +273,23 @@ router.get("/auth/me", auth, (req: any, res) => {
 });
 
 router.get("/auth/me/role", auth, (req: any, res) => {
-  const u = get<any>("SELECT role FROM users WHERE id = ?", [(req as any).user.id]);
+  const u = get<any>("SELECT role FROM users WHERE id = ?", [req.user.id]);
   if (!u) return res.status(404).json({ error: "Not found" });
   res.json({ role: u.role, isAdmin: u.role === "admin" });
 });
 
 router.post("/auth/make-admin", auth, (req: any, res) => {
-  const u = get<any>("SELECT id, role FROM users WHERE id = ?", [(req as any).user.id]);
+  const u = get<any>("SELECT id, role FROM users WHERE id = ?", [req.user.id]);
   if (!u) return res.status(404).json({ error: "Not found" });
   const existingAdmin = get<any>("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (existingAdmin) return res.status(400).json({ error: "Admin already exists" });
-  run("UPDATE users SET role = 'admin' WHERE id = ?", [(req as any).user.id]);
+  run("UPDATE users SET role = 'admin' WHERE id = ?", [req.user.id]);
+  audit("admin.promote", clientIp(req), { userId: req.user.id });
   res.json({ ok: true, message: "You are now admin" });
 });
 
 router.get("/admin/stats", auth, (req: any, res) => {
-  const u = get<any>("SELECT role FROM users WHERE id = ?", [(req as any).user.id]);
+  const u = get<any>("SELECT role FROM users WHERE id = ?", [req.user.id]);
   if (!u || u.role !== "admin") return res.status(403).json({ error: "Admin only" });
   const totalUsers = get<any>("SELECT COUNT(*) AS c FROM users")?.c || 0;
   const totalDocs = get<any>("SELECT COUNT(*) AS c FROM documents")?.c || 0;
@@ -164,36 +297,128 @@ router.get("/admin/stats", auth, (req: any, res) => {
   res.json({ totalUsers, totalDocs, totalPapers });
 });
 
-/* ---------- engine / health ---------- */
-router.get("/health", (_req, res) => res.json({ ok: true, demoMode: config.demoMode, time: new Date().toISOString() }));
-router.get("/engine", (_req, res) => res.json({ ...cEngineInfo(), semantic: "IDF-weighted hashed embeddings (384-d, offline) or OpenAI text-embedding-3-small via EMBEDDING_PROVIDER; pgvector HNSW in prod", note: "C = lexical; embeddings = semantic. Never conflated." }));
+/** Recent security events — admin only. */
+router.get("/admin/audit", auth, (req: any, res) => {
+  const u = get<any>("SELECT role FROM users WHERE id = ?", [req.user.id]);
+  if (!u || u.role !== "admin") return res.status(403).json({ error: "Admin only" });
+  const rows = all<any>("SELECT event, ip, user_id, detail, created_at FROM audit_log ORDER BY created_at DESC LIMIT 100");
+  res.json(rows.map((r: any) => ({ ...r, detail: safeParse(r.detail) })));
+});
 
-/* ---------- upload & analysis ---------- */
+function safeParse(s: any) {
+  try { return JSON.parse(s || "{}"); } catch { return {}; }
+}
+
+/** Machine-readable summary of the deployment's security posture. */
+router.get("/security/summary", (_req, res) => {
+  res.json({
+    transport: config.isProduction ? "TLS terminated at the platform proxy" : "plain HTTP (dev)",
+    auth: {
+      scheme: "JWT bearer tokens",
+      accessTokenTtl: config.tokenTtl,
+      refreshTokenTtl: config.refreshTokenTtl,
+      refreshTokensHashed: true,
+      rotation: "single-use refresh tokens; reuse revokes the session",
+      passwordHashing: `bcrypt (cost ${config.bcryptRounds})`,
+      passwordPolicy: `min ${config.minPasswordLength} chars, two character classes`,
+      lockout: `${config.authMaxAttempts} failed attempts per account+IP within ${Math.round(config.authWindowMs / 60000)} min`,
+      enumeration: "identical error and comparable timing for unknown accounts",
+    },
+    transportSecurity: {
+      headers: ["Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "X-DNS-Prefetch-Control"],
+      hsts: config.isProduction,
+      csp: "self-only scripts; no inline JS, no third-party origins",
+      poweredBy: "disabled",
+      cors: "explicit origin allow-list",
+    },
+    input: {
+      validation: "zod schemas on every request body",
+      sql: "parameterised statements only (no string-built SQL)",
+      uploads: `PDF/DOCX/TXT only, ${config.maxFileMb} MB cap, filename sanitised`,
+      json: "2 MB body cap, malformed JSON rejected with 400",
+    },
+    abuse: {
+      globalRateLimit: `${config.isProduction ? 120 : 600} requests / minute`,
+      authRateLimit: `${config.authMaxAttempts} attempts / ${Math.round(config.authWindowMs / 60000)} min`,
+      uploadsPerUser: config.maxUploadsPerUser,
+      concurrentIngestions: "1 per user, 3 globally",
+    },
+    privacy: {
+      documents: "owned per account; other users receive 404 (not 403) so ids are not confirmed",
+      legacyRows: "documents with no owner predate ownership tracking and stay visible to signed-in users",
+      demoPapers: "synthetic rows are flagged is_demo and badged DEMO in every surface",
+    },
+    audit: { trail: "auth, admin and upload events are recorded with timestamp and client IP" },
+  });
+});
+
+/* ================================================================
+   ENGINE / HEALTH
+   ================================================================ */
+
+router.get("/health", (_req, res) =>
+  res.json({ ok: true, demoMode: config.demoMode, env: config.env, time: new Date().toISOString() })
+);
+router.get("/engine", (_req, res) =>
+  res.json({
+    ...cEngineInfo(),
+    semantic: "IDF-weighted hashed embeddings (384-d, offline) or OpenAI text-embedding-3-small via EMBEDDING_PROVIDER; pgvector HNSW in prod",
+    note: "C = lexical; embeddings = semantic. Never conflated.",
+  })
+);
+
+/* ================================================================
+   UPLOAD & ANALYSIS
+   ================================================================ */
+
 const uploadDir = path.resolve(config.uploadDir);
 fs.mkdirSync(uploadDir, { recursive: true });
+
 const upload = multer({
   dest: uploadDir,
   limits: { fileSize: config.maxFileMb * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
-    const ok = /\.(pdf|docx|txt)$/i.test(file.originalname) || ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.mimetype);
-    if (ok) cb(null, true);
-    else cb(new Error("Only PDF, DOCX, TXT allowed"));
+    const name = String(file.originalname || "");
+    const extOk = /\.(pdf|docx|txt)$/i.test(name);
+    const mimeOk = [
+      "application/pdf",
+      "text/plain",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ].includes(file.mimetype);
+    if (extOk || mimeOk) return cb(null, true);
+    cb(new Error("Only PDF, DOCX, TXT allowed"));
   },
 });
 
 router.post("/upload", auth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
+
+    /* Ceiling on how many analyses one account may hold, so a single client
+     * cannot fill the disk. The count is cheap (indexed by user_id). */
+    const mine = get<any>("SELECT COUNT(*) AS c FROM documents WHERE user_id = ?", [req.user!.id])?.c || 0;
+    if (mine >= config.maxUploadsPerUser) {
+      return res.status(429).json({
+        error: `You have reached the limit of ${config.maxUploadsPerUser} stored analyses. Delete an old one first.`,
+      });
+    }
+
     const id = randomUUID();
-    run("INSERT INTO documents (id, user_id, filename, mime, size_bytes, status, stage, progress) VALUES (?,?,?,?,?,?,?,?)",
-      [id, (req as any).user.id, req.file.originalname, req.file.mimetype, req.file.size, "processing", "QUEUED", 2]);
+    const filename = safeFilename(req.file.originalname);
+    run(
+      "INSERT INTO documents (id, user_id, filename, mime, size_bytes, status, stage, progress) VALUES (?,?,?,?,?,?,?,?)",
+      [id, req.user!.id, filename, req.file.mimetype, req.file.size, "processing", "QUEUED", 2]
+    );
     const fp = req.file.path;
-    runAnalysis(id, fp, req.file.mimetype, req.file.originalname);
+    runAnalysis(id, fp, req.file.mimetype, filename);
     res.json({ documentId: id, status: "processing" });
-  } catch (e: any) { res.status(400).json({ error: e.message }); }
+  } catch (e: any) {
+    audit("security.upload_rejected", clientIp(req), { reason: String(e?.message || e).slice(0, 120) });
+    res.status(400).json({ error: e.message });
+  }
 });
 
-/* Document visibility rule, shared by every route that touches a document:
+/** Document visibility rule, shared by every route that touches a document:
  *   - admins see everything
  *   - owners see their own
  *   - legacy rows with NULL user_id predate ownership tracking and stay visible
@@ -214,11 +439,13 @@ router.get("/documents", auth, (req: any, res) => {
     : all("SELECT id, filename, title, status, stage, progress, created_at FROM documents WHERE user_id IS NULL OR user_id = ? ORDER BY created_at DESC LIMIT 50", [u.id]);
   res.json(rows);
 });
+
 router.get("/documents/:id/status", auth, (req, res) => {
   const d = get<any>("SELECT id, user_id, status, stage, progress, error, title FROM documents WHERE id = ?", [req.params.id]);
   if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
   res.json({ ...d, user_id: undefined, done: d.stage === "DONE", failed: d.stage === "FAILED" });
 });
+
 router.get("/documents/:id/report", auth, (req, res) => {
   const d = get<any>("SELECT id, user_id, stage, progress FROM documents WHERE id = ?", [req.params.id]);
   if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
@@ -228,48 +455,130 @@ router.get("/documents/:id/report", auth, (req, res) => {
   res.json(r.report);
 });
 
+/** Machine-readable export of a finished report (JSON download). */
+router.get("/documents/:id/export", auth, (req, res) => {
+  const d = get<any>("SELECT id, user_id, stage FROM documents WHERE id = ?", [req.params.id]);
+  if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
+  const r = getReport(req.params.id);
+  if (!r || r.stage !== "DONE") return res.status(409).json({ error: "Analysis not complete" });
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Disposition", `attachment; filename="researchlens-report-${d.id.slice(0, 8)}-${stamp}.json"`);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.json({ ...r.report, exportedAt: new Date().toISOString() });
+});
 
 router.delete("/documents/:id", auth, (req, res) => {
   const d = ownDoc(req, req.params.id);
   if (!d) return res.status(404).json({ error: "Not found" });
   run("DELETE FROM similarity_results WHERE document_id = ?", [req.params.id]);
   run("DELETE FROM documents WHERE id = ?", [req.params.id]);
+  audit("doc.delete", clientIp(req), { documentId: req.params.id, userId: req.user!.id });
   res.json({ deleted: req.params.id });
 });
 
-/* ---------- papers ---------- */
+/* ================================================================
+   PAPERS
+   ================================================================ */
+
 function authorsOf(pid: string) {
-  return all<any>("SELECT a.name FROM paper_authors pa JOIN authors a ON a.id = pa.author_id WHERE pa.paper_id = ? ORDER BY pa.position", [pid]).map((r: any) => r.name);
+  return all<any>(
+    "SELECT a.name FROM paper_authors pa JOIN authors a ON a.id = pa.author_id WHERE pa.paper_id = ? ORDER BY pa.position",
+    [pid]
+  ).map((r: any) => r.name);
 }
+
 /* Papers are shared knowledge-base data, so these routes are public — but the
  * full text is never returned. It is 5x the payload size and the UI never
  * uses it; the indexed chunks are what retrieval reads. */
 const PAPER_FIELDS = "id, doi, title, abstract, year, venue, source_url, open_access_url, citation_count, is_demo, created_at";
 
+/** Relevance score for the explorer: how strongly a paper matches the query.
+ *  Weighted so a title hit outranks an abstract hit, and citation count is a
+ *  light tie-breaker — never the primary signal.
+ *
+ *  Every term must appear somewhere in the record (AND semantics). A plain
+ *  substring search on the whole phrase meant "phishing detection" missed
+ *  "Phishing URL Detection", which is the single most common query in this
+ *  domain. */
+function relevanceOf(p: any, terms: string[]): number {
+  if (!terms.length) return (p.citation_count || 0) / 1000;
+  const title = (p.title || "").toLowerCase();
+  const abstract = (p.abstract || "").toLowerCase();
+  const venue = (p.venue || "").toLowerCase();
+  let score = 0;
+  for (const t of terms) {
+    if (title.includes(t)) score += 3;
+    else if (abstract.includes(t)) score += 1;
+    else if (venue.includes(t)) score += 0.5;
+  }
+  // Phrase bonus: the whole query appearing verbatim is a strong signal.
+  const phrase = terms.join(" ");
+  if (terms.length > 1) {
+    if (title.includes(phrase)) score += 4;
+    else if (abstract.includes(phrase)) score += 2;
+  }
+  return score + Math.min(p.citation_count || 0, 200) / 400;
+}
+
+/** Split a query into search terms, ignoring punctuation. */
+function queryTerms(q: string): string[] {
+  return q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1);
+}
+
 router.get("/papers", (req, res) => {
   const { search = "", topic = "", sort = "relevance", page = "1", limit = "12" } = req.query as any;
-  let rows = all<any>(`SELECT ${PAPER_FIELDS} FROM papers`);
-  if (search) {
-    const q = String(search).toLowerCase();
-    rows = rows.filter((p: any) => ((p.title || "") + " " + (p.abstract || "")).toLowerCase().includes(q));
-  }
+  const q = String(search).trim();
+  const terms = queryTerms(q);
+
+  /* Topic filtering goes through the real `paper_topics` relation instead of
+   * a substring match over title+abstract, so "Graph Learning" no longer
+   * matches a paper that merely mentions the word "graph". */
+  let rows: any[];
   if (topic) {
-    const q = String(topic).toLowerCase();
-    rows = rows.filter((p: any) => ((p.title || "") + " " + (p.abstract || "")).toLowerCase().includes(q));
+    rows = all<any>(
+      `SELECT ${PAPER_FIELDS} FROM papers p
+       WHERE EXISTS (SELECT 1 FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id
+                     WHERE pt.paper_id = p.id AND t.name = ?)
+       ORDER BY p.citation_count DESC`,
+      [String(topic)]
+    );
+  } else {
+    rows = all<any>(`SELECT ${PAPER_FIELDS} FROM papers`);
   }
+
+  if (terms.length) {
+    rows = rows.filter((p: any) => {
+      const hay = `${p.title || ""} ${p.abstract || ""} ${p.venue || ""}`.toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    });
+  }
+
   if (sort === "year") rows.sort((a: any, b: any) => (b.year || 0) - (a.year || 0));
   else if (sort === "citations") rows.sort((a: any, b: any) => (b.citation_count || 0) - (a.citation_count || 0));
-  const pg = Math.max(1, Number(page) || 1), lim = Math.min(50, Number(limit) || 12);
-  const items = rows.slice((pg - 1) * lim, pg * lim).map((p: any) => ({ ...p, authors: authorsOf(p.id), is_demo: Boolean(p.is_demo) }));
-  res.json({ total: rows.length, page: pg, items });
+  else rows.sort((a: any, b: any) => relevanceOf(b, terms) - relevanceOf(a, terms));
+
+  const pg = Math.max(1, Number(page) || 1);
+  const lim = Math.min(50, Number(limit) || 12);
+  const items = rows.slice((pg - 1) * lim, pg * lim).map((p: any) => ({
+    ...p,
+    authors: authorsOf(p.id),
+    is_demo: Boolean(p.is_demo),
+    relevance: Math.round(relevanceOf(p, terms) * 10) / 10,
+  }));
+  res.json({ total: rows.length, page: pg, limit: lim, items });
 });
 
 /* Static segments must be registered BEFORE "/papers/:id" — Express matches
    in registration order, so "/papers/saved" would otherwise be swallowed by
    the ":id" parameter and answer 404. */
 router.get("/papers/saved", auth, (req, res) => {
-  const userId = (req as any).user.id;
-  const rows = all<any>(`SELECT p.${PAPER_FIELDS.split(", ").join(", p.")} FROM papers p JOIN saved_papers sp ON sp.paper_id = p.id WHERE sp.user_id = ? ORDER BY sp.saved_at DESC`, [userId]);
+  const userId = req.user!.id;
+  const rows = all<any>(
+    `SELECT p.${PAPER_FIELDS.split(", ").join(", p.")} FROM papers p
+     JOIN saved_papers sp ON sp.paper_id = p.id
+     WHERE sp.user_id = ? ORDER BY sp.saved_at DESC`,
+    [userId]
+  );
   res.json(rows.map((p: any) => ({ ...p, authors: authorsOf(p.id), is_demo: Boolean(p.is_demo) })));
 });
 
@@ -280,6 +589,25 @@ router.get("/papers/:id", (req, res) => {
   res.json({ ...p, authors: authorsOf(p.id), chunks, is_demo: Boolean(p.is_demo) });
 });
 
+/** Citation neighbourhood of one paper: who it cites and who cites it. */
+router.get("/papers/:id/citations", (req, res) => {
+  const id = req.params.id;
+  const paper = get<any>("SELECT id, title, year, citation_count FROM papers WHERE id = ?", [id]);
+  if (!paper) return res.status(404).json({ error: "Not found" });
+
+  const cites = all<any>(
+    `SELECT p.id, p.title, p.year, p.venue, p.citation_count FROM citations c
+     JOIN papers p ON p.id = c.cited_paper_id WHERE c.citing_paper_id = ?`,
+    [id]
+  );
+  const citedBy = all<any>(
+    `SELECT p.id, p.title, p.year, p.venue, p.citation_count FROM citations c
+     JOIN papers p ON p.id = c.citing_paper_id WHERE c.cited_paper_id = ?`,
+    [id]
+  );
+  res.json({ paper, cites, citedBy, counts: { cites: cites.length, citedBy: citedBy.length } });
+});
+
 /** Side-by-side comparison of 2–5 papers.
  *  Semantic = cosine over chunk embeddings, lexical = Jaccard over title+abstract.
  *  Reported separately, never conflated (same honesty rule as the report). */
@@ -288,12 +616,18 @@ router.post("/papers/compare", (req, res) => {
   if (ids.length < 2) return res.status(400).json({ error: "Provide at least 2 paper ids" });
   if (ids.length > 5) return res.status(400).json({ error: "At most 5 papers can be compared at once" });
 
-  const papers = ids.map((id) => get<any>("SELECT * FROM papers WHERE id = ?", [id]));
-  if (papers.some((p) => !p)) return res.status(404).json({ error: "One or more papers not found" });
+  const papers = ids.map((id) => get<any>("SELECT * FROM papers WHERE id = ?", [id])).filter(Boolean);
+  if (papers.length !== ids.length) return res.status(404).json({ error: "One or more papers not found" });
 
   const meta = new Map(papers.map((p: any) => [p.id, p]));
-  const topicsOf = (pid: string) => all<any>(
-    "SELECT t.name FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id WHERE pt.paper_id = ?", [pid]).map((r: any) => r.name);
+  const topicsByPaper = new Map<string, string[]>();
+  for (const row of all<any>(
+    "SELECT pt.paper_id, t.name FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id"
+  )) {
+    if (!topicsByPaper.has(row.paper_id)) topicsByPaper.set(row.paper_id, []);
+    topicsByPaper.get(row.paper_id)!.push(row.name);
+  }
+  const topicsOf = (pid: string) => topicsByPaper.get(pid) || [];
   const authorsOfEach = new Map(papers.map((p: any) => [p.id, authorsOf(p.id)]));
 
   // Chunk embedding centroid per paper = mean of its chunk vectors.
@@ -324,14 +658,19 @@ router.post("/papers/compare", (req, res) => {
       const lexical = jaccard(`${a.title} ${a.abstract}`, `${b.title} ${b.abstract}`);
       const ta = topicsOf(a.id), tb = topicsOf(b.id);
       const sharedTopics = ta.filter((t) => tb.includes(t));
-      const sharedAuthors = (authorsOfEach.get(a.id) || []).filter((n) => (authorsOfEach.get(b.id) || []).includes(n));
+      const sharedAuthors = (authorsOfEach.get(a.id) || []).filter((n) =>
+        (authorsOfEach.get(b.id) || []).includes(n)
+      );
+      const sharedTerms = [...new Set(tokenize(`${a.title} ${a.abstract}`))]
+        .filter((t) => tokenize(`${b.title} ${b.abstract}`).includes(t))
+        .slice(0, 12);
       pairs.push({
         a: a.id, b: b.id,
         aTitle: a.title, bTitle: b.title,
         semantic: Math.round(semantic * 100),
         lexical: Math.round(lexical * 100),
         combined: Math.round((0.6 * semantic + 0.4 * lexical) * 100),
-        sharedTopics, sharedAuthors,
+        sharedTopics, sharedAuthors, sharedTerms,
         yearGap: Math.abs((a.year || 0) - (b.year || 0)),
         note: "Scores measure relatedness between indexed text, not quality or plagiarism.",
       });
@@ -356,7 +695,10 @@ router.post("/papers/compare", (req, res) => {
 
 router.post("/papers/:id/save", auth, (req, res) => {
   const paperId = req.params.id;
-  const userId = (req as any).user.id;
+  const userId = req.user!.id;
+  if (!get<any>("SELECT id FROM papers WHERE id = ?", [paperId])) {
+    return res.status(404).json({ error: "Not found" });
+  }
   const existing = get<any>("SELECT id FROM saved_papers WHERE user_id = ? AND paper_id = ?", [userId, paperId]);
   if (existing) {
     run("DELETE FROM saved_papers WHERE user_id = ? AND paper_id = ?", [userId, paperId]);
@@ -366,24 +708,42 @@ router.post("/papers/:id/save", auth, (req, res) => {
   res.json({ saved: true });
 });
 
+/* ================================================================
+   TRENDS / DASHBOARD
+   ================================================================ */
+
+/** Topic counts for a set of papers in one query (no N+1). */
+function topicCountsFor(paperIds: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (!paperIds.length) return counts;
+  const placeholders = paperIds.map(() => "?").join(",");
+  const rows = all<any>(
+    `SELECT t.name FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id WHERE pt.paper_id IN (${placeholders})`,
+    paperIds
+  );
+  for (const r of rows) counts.set(r.name, (counts.get(r.name) || 0) + 1);
+  return counts;
+}
+
 router.get("/trends", (_req, res) => {
-  const papers = all<any>("SELECT * FROM papers");
+  const papers = all<any>("SELECT id, year, is_demo FROM papers");
   const byYear: Record<string, number> = {};
-  const topicCount: Record<string, number> = {};
-  for (const p of papers) {
-    if (p.year) byYear[p.year] = (byYear[p.year] || 0) + 1;
-    for (const t of all<any>("SELECT t.name FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id WHERE pt.paper_id = ?", [p.id])) {
-      topicCount[t.name] = (topicCount[t.name] || 0) + 1;
-    }
-  }
+  for (const p of papers) if (p.year) byYear[p.year] = (byYear[p.year] || 0) + 1;
+
+  const topicCount = topicCountsFor(papers.map((p: any) => p.id));
   res.json({
-    papersByYear: Object.entries(byYear).map(([year, count]) => ({ year, count })).sort((a, b) => Number(a.year) - Number(b.year)),
-    topics: Object.entries(topicCount).map(([topic, count]) => ({ topic, count })).sort((a, b) => b.count - a.count).slice(0, 12),
-    total: papers.length, demoCount: papers.filter((p: any) => p.is_demo).length,
+    papersByYear: Object.entries(byYear)
+      .map(([year, count]) => ({ year, count }))
+      .sort((a, b) => Number(a.year) - Number(b.year)),
+    topics: [...topicCount.entries()]
+      .map(([topic, count]) => ({ topic, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 12),
+    total: papers.length,
+    demoCount: papers.filter((p: any) => p.is_demo).length,
   });
 });
 
-/* ---------- dashboard ---------- */
 router.get("/dashboard/stats", auth, (req: any, res) => {
   const u = req.user || {};
   const papers = all<any>("SELECT id FROM papers");
@@ -394,37 +754,60 @@ router.get("/dashboard/stats", auth, (req: any, res) => {
     : all<any>("SELECT id, title, filename, stage, progress, created_at FROM documents WHERE user_id IS NULL OR user_id = ? ORDER BY created_at DESC", [u.id]);
   const sims = all<any>("SELECT score FROM similarity_results");
   res.json({
-    totalPapers: papers.length, totalAuthors: get<any>("SELECT COUNT(*) AS c FROM authors")?.c || 0,
-    totalTopics: get<any>("SELECT COUNT(*) AS c FROM topics")?.c || 0, analyses: docs.length,
+    totalPapers: papers.length,
+    totalAuthors: get<any>("SELECT COUNT(*) AS c FROM authors")?.c || 0,
+    totalTopics: get<any>("SELECT COUNT(*) AS c FROM topics")?.c || 0,
+    analyses: docs.length,
     avgSimilarity: sims.length ? Math.round(sims.reduce((s: number, r: any) => s + r.score, 0) / sims.length) : 0,
     recent: docs.slice(0, 6).map((d: any) => ({ id: d.id, title: d.title || d.filename, stage: d.stage, progress: d.progress })),
   });
 });
 
-/* ---------- RAG chat (grounded) ---------- */
+/* ================================================================
+   RAG CHAT (grounded)
+   ================================================================ */
+
 router.post("/chat", auth, (req, res) => {
   const { question = "", topK = 5 } = req.body || {};
   if (!question || String(question).length < 3) return res.status(400).json({ error: "Question required" });
   const q = embedSync(String(question).slice(0, 2000));
-  const chunks = all<any>("SELECT c.content, c.section, c.paper_id, c.embedding, p.title, p.year FROM paper_chunks c JOIN papers p ON p.id = c.paper_id LIMIT 3000");
-  const scored = chunks.map((c: any) => {
-    let emb: number[] = [];
-    try { emb = JSON.parse(c.embedding); } catch { emb = []; }
-    return { ...c, score: emb.length ? cosine(q, emb) : 0 };
-  }).sort((a: any, b: any) => b.score - a.score).slice(0, Math.min(topK, 8));
+  const chunks = all<any>(
+    "SELECT c.content, c.section, c.paper_id, c.embedding, p.title, p.year FROM paper_chunks c JOIN papers p ON p.id = c.paper_id LIMIT 3000"
+  );
+  const scored = chunks
+    .map((c: any) => {
+      let emb: number[] = [];
+      try { emb = JSON.parse(c.embedding); } catch { emb = []; }
+      return { ...c, score: emb.length ? cosine(q, emb) : 0 };
+    })
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, Math.min(topK, 8));
+
   if (!scored.length || scored[0].score < 0.08) {
-    return res.json({ answer: "I couldn't find enough evidence in the indexed literature to answer that. Try ingesting more papers on this topic first.", references: [], grounded: false });
+    return res.json({
+      answer:
+        "I couldn't find enough evidence in the indexed literature to answer that. Try ingesting more papers on this topic first.",
+      references: [],
+      grounded: false,
+    });
   }
   const refs = [...new Map(scored.map((s: any) => [s.paper_id, { id: s.paper_id, title: s.title, year: s.year }])).values()];
   const kws = extractKeywords(scored.map((s: any) => s.content).join(" ")).slice(0, 6);
   res.json({
     answer: `Based on ${refs.length} retrieved paper(s): the indexed literature most strongly associates your question with "${kws.slice(0, 3).join(", ")}". Top evidence comes from "${scored[0].title}" (${scored[0].section}, relevance ${Math.round(scored[0].score * 100)}%). Key themes: ${kws.join("; ")}. Ask a follow-up about methods, datasets, or limitations for deeper comparison.`,
-    references: refs, evidence: scored.slice(0, 3).map((s: any) => ({ paper: s.title, section: s.section, excerpt: s.content.slice(0, 280), relevance: Math.round(s.score * 100) })),
-    grounded: true, note: "Answer is grounded only in retrieved chunks above.",
+    references: refs,
+    evidence: scored.slice(0, 3).map((s: any) => ({
+      paper: s.title, section: s.section, excerpt: s.content.slice(0, 280), relevance: Math.round(s.score * 100),
+    })),
+    grounded: true,
+    note: "Answer is grounded only in retrieved chunks above.",
   });
 });
 
-/* ---------- algorithm transparency ---------- */
+/* ================================================================
+   ALGORITHM TRANSPARENCY
+   ================================================================ */
+
 router.get("/algorithms", (_req, res) => {
   res.json({
     cEngine: cEngineInfo(),
@@ -438,7 +821,10 @@ router.get("/algorithms", (_req, res) => {
   });
 });
 
-/* ---------- citation graph (C engine: BFS / DFS / components / PageRank) ---------- */
+/* ================================================================
+   CITATION GRAPH (C engine: BFS / DFS / components / PageRank)
+   ================================================================ */
+
 router.get("/citations/graph", async (_req, res) => {
   const edges = all<any>("SELECT citing_paper_id, cited_paper_id FROM citations");
   if (!edges.length) {
@@ -487,7 +873,10 @@ router.get("/citations/graph", async (_req, res) => {
   });
 });
 
-/* ---------- knowledge base stats ---------- */
+/* ================================================================
+   KNOWLEDGE BASE STATS
+   ================================================================ */
+
 router.get("/knowledge-base/stats", (_req, res) => {
   const papers = all<any>("SELECT id, year, is_demo, citation_count FROM papers");
   const chunks = get<any>("SELECT COUNT(*) AS c FROM paper_chunks")?.c || 0;
@@ -495,32 +884,37 @@ router.get("/knowledge-base/stats", (_req, res) => {
   const topics = get<any>("SELECT COUNT(*) AS c FROM topics")?.c || 0;
   const citations = get<any>("SELECT COUNT(*) AS c FROM citations")?.c || 0;
   const years = papers.map((p: any) => p.year).filter(Boolean).map(Number);
-  const topicCount: Record<string, number> = {};
-  for (const t of all<any>("SELECT t.name FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id")) {
-    topicCount[t.name] = (topicCount[t.name] || 0) + 1;
-  }
+  const topicCount = topicCountsFor(papers.map((p: any) => p.id));
   res.json({
     papers: papers.length,
     realPapers: papers.filter((p: any) => !p.is_demo).length,
     demoPapers: papers.filter((p: any) => p.is_demo).length,
     chunks, authors, topics, citations,
     avgChunksPerPaper: papers.length ? Math.round((chunks / papers.length) * 10) / 10 : 0,
-    avgCitations: papers.length ? Math.round(papers.reduce((s: number, p: any) => s + (p.citation_count || 0), 0) / papers.length) : 0,
+    avgCitations: papers.length
+      ? Math.round(papers.reduce((s: number, p: any) => s + (p.citation_count || 0), 0) / papers.length)
+      : 0,
     yearRange: years.length ? { min: Math.min(...years), max: Math.max(...years) } : { min: null, max: null },
-    topTopics: Object.entries(topicCount).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([topic, count]) => ({ topic, count })),
+    topTopics: [...topicCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([topic, count]) => ({ topic, count })),
     embeddingProvider: provider(),
     embeddingDimension: DIM,
     cEngine: cEngineAvailable(),
   });
 });
 
-/* ---------- ingestion (OpenAlex / Crossref, demo fallback when offline) ---------- */
+/* ================================================================
+   INGESTION (OpenAlex; clearly-labelled demo fallback when offline)
+   ================================================================ */
+
 router.post("/ingest/start", auth, (req, res) => {
   const { domain = "", count = 20 } = req.body || {};
   const d = String(domain).trim();
   if (d.length < 2) return res.status(400).json({ error: "A research domain is required" });
   const target = Math.min(MAX_INGEST_COUNT, Math.max(1, Number(count) || 20));
-  const userId = (req as any).user.id;
+  const userId = req.user!.id;
 
   // Guard against abuse: ingestion hits a third-party API, so one user must not
   // be able to flood it (or fill the knowledge base) with parallel jobs.
@@ -530,13 +924,14 @@ router.post("/ingest/start", auth, (req, res) => {
   if ((globalRunning?.c || 0) >= 3) return res.status(429).json({ error: "The server is busy ingesting. Try again shortly." });
 
   const jobId = startIngestJob(d, target, userId);
+  audit("ingest.start", clientIp(req), { userId, domain: d, count: target });
   res.json({ jobId, id: jobId, status: "running", domain: d, targetCount: target });
 });
 
 router.get("/ingest/:id", auth, (req, res) => {
   const j = get<any>("SELECT * FROM ingestion_jobs WHERE id = ?", [req.params.id]);
   if (!j) return res.status(404).json({ error: "Not found" });
-  const u = (req as any).user || {};
+  const u = req.user || ({} as any);
   // A job belongs to the user who started it (admins can see any).
   if (j.user_id && j.user_id !== u.id && u.role !== "admin") {
     return res.status(404).json({ error: "Not found" });
@@ -546,7 +941,10 @@ router.get("/ingest/:id", auth, (req, res) => {
   res.json({ ...j, log });
 });
 
-/* ---------- literature review (grounded only in retrieved papers) ---------- */
+/* ================================================================
+   LITERATURE REVIEW (grounded only in retrieved papers)
+   ================================================================ */
+
 router.post("/literature-review", auth, (req, res) => {
   const { topic = "", paperIds = [] } = req.body || {};
   const t = String(topic).trim();
@@ -566,7 +964,9 @@ router.post("/literature-review", auth, (req, res) => {
       if (papers.length >= 12) break;
     }
   }
-  if (!papers.length) return res.status(404).json({ error: "No papers available to review. Ingest papers for this topic first." });
+  if (!papers.length) {
+    return res.status(404).json({ error: "No papers available to review. Ingest papers for this topic first." });
+  }
 
   const outline = literatureReviewOutline(t || "Retrieved literature", papers);
   res.json({

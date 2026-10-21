@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import express from "express";
-import cors from "cors";
-import { router } from "./routes.js";
-import { apiErrorHandler } from "./middleware.js";
-import { all, run } from "./db.js";
+import { createApp } from "./app.js";
+import { all, get, run } from "./db.js";
 
-/* API-level tests over the real router.
+/* API-level tests over the real app.
  * These guard the bugs that made the advertised features unreachable:
  * a static route shadowed by a ":id" param, and a helper referenced but
- * never defined (which surfaced as a 500 instead of a 404). */
+ * never defined (which surfaced as a 500 instead of a 404).
+ *
+ * The real `createApp()` is mounted so the security headers, the rate
+ * limiter and the error handler are the production ones — a test app that
+ * re-implements them would prove nothing. */
 
 let server: any;
 let base = "";
@@ -16,11 +17,7 @@ let token = "";
 let guestToken = "";
 
 beforeAll(async () => {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-  app.use("/api", router);
-  app.use(apiErrorHandler);
+  const app = createApp();
   await new Promise<void>((resolve) => { server = app.listen(0, "127.0.0.1", () => resolve()); });
   const addr = server.address();
   base = `http://127.0.0.1:${addr.port}/api`;
@@ -418,4 +415,221 @@ describe("ingestion", () => {
 
     expect(new Set(all<any>("SELECT id FROM papers").map((r: any) => r.id)).size).toBe(paperSnapshot.size);
   }, 60000);
+});
+
+/* ================================================================
+   SECURITY
+   ================================================================ */
+
+describe("security headers", () => {
+  it("sets the hardening headers and hides the stack", async () => {
+    const res = await fetch(`${base}/health`);
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+    expect(res.headers.get("content-security-policy")).toMatch(/default-src 'self'/);
+    expect(res.headers.get("x-powered-by")).toBeNull();
+  });
+
+  it("tags every response with a request id", async () => {
+    const res = await fetch(`${base}/health`);
+    expect(res.headers.get("x-request-id")).toMatch(/[0-9a-f-]{8,}/i);
+  });
+});
+
+describe("password policy", () => {
+  it("refuses a password that is too short", async () => {
+    const r = await fetch(`${base}/auth/register`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `weak_${Date.now()}@test.local`, password: "abc", name: "weak" }),
+    });
+    expect(r.status).toBe(400);
+    expect(String(((await r.json() as any).error) || "")).toMatch(/at least/i);
+  });
+
+  it("refuses a password with a single character class", async () => {
+    const r = await fetch(`${base}/auth/register`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `weak2_${Date.now()}@test.local`, password: "aaaaaaaaaaaa", name: "weak" }),
+    });
+    expect(r.status).toBe(400);
+    expect(String(((await r.json() as any).error) || "")).toMatch(/mix at least two|repeated/i);
+  });
+
+  it("stores the password as a bcrypt hash, never in clear text", async () => {
+    const u = await makeUser("hashcheck");
+    const row = get<any>("SELECT password_hash FROM users WHERE id = ?", [u.id]);
+    expect(row.password_hash).toMatch(/^\$2[aby]\$/);
+    expect(row.password_hash).not.toContain("secret123");
+    await cleanupUser(u.id);
+  });
+});
+
+describe("no account enumeration", () => {
+  it("answers an unknown email exactly like a wrong password", async () => {
+    const unknown = await fetch(`${base}/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "nobody_at_all@test.local", password: "WrongPass1" }),
+    });
+    const u = await makeUser("enumeration");
+    const wrongPassword = await fetch(`${base}/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: u.email, password: "WrongPass1" }),
+    });
+
+    expect(unknown.status).toBe(401);
+    expect(wrongPassword.status).toBe(401);
+    const a = await unknown.json() as any;
+    const b = await wrongPassword.json() as any;
+    // identical shape and wording — the endpoint must not reveal which
+    // addresses are registered.
+    expect(a.error).toBe(b.error);
+    expect(a.error).not.toMatch(/not found|unknown|exist/i);
+
+    await cleanupUser(u.id);
+  });
+});
+
+describe("refresh tokens", () => {
+  it("rotates: the old refresh token stops working after one use", async () => {
+    const r = await fetch(`${base}/auth/register`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `rot_${Date.now()}@test.local`, password: "secret123", name: "rot" }),
+    });
+    const b = await r.json() as any;
+    expect(b.refreshToken).toBeTruthy();
+
+    const first = await fetch(`${base}/auth/refresh`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: b.refreshToken }),
+    });
+    expect(first.status).toBe(200);
+    const fb = await first.json() as any;
+    expect(fb.token).toBeTruthy();
+    expect(fb.refreshToken).toBeTruthy();
+    expect(fb.refreshToken).not.toBe(b.refreshToken);
+
+    // Replaying the consumed token must fail.
+    const replay = await fetch(`${base}/auth/refresh`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: b.refreshToken }),
+    });
+    expect(replay.status).toBe(401);
+
+    await cleanupUser(b.user.id);
+  });
+
+  it("stores only a hash of the refresh token", async () => {
+    const r = await fetch(`${base}/auth/register`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `hash_${Date.now()}@test.local`, password: "secret123", name: "hash" }),
+    });
+    const b = await r.json() as any;
+    const row = get<any>("SELECT token_hash FROM refresh_tokens WHERE user_id = ?", [b.user.id]);
+    expect(row).toBeTruthy();
+    expect(row.token_hash).not.toBe(b.refreshToken);
+    expect(row.token_hash).toMatch(/^[0-9a-f]{64}$/);
+    await cleanupUser(b.user.id);
+  });
+
+  it("refuses a refresh token used as an access token", async () => {
+    const r = await fetch(`${base}/auth/register`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `mix_${Date.now()}@test.local`, password: "secret123", name: "mix" }),
+    });
+    const b = await r.json() as any;
+    const res = await fetch(`${base}/dashboard/stats`, { headers: { Authorization: `Bearer ${b.refreshToken}` } });
+    expect(res.status).toBe(401);
+    await cleanupUser(b.user.id);
+  });
+});
+
+describe("upload hardening", () => {
+  it("strips path components from the stored filename", async () => {
+    const u = await makeUser("filename");
+    const fd = new FormData();
+    fd.append("file", new Blob(["Phishing detection with gradient boosting on URL features."], { type: "text/plain" }), "../../etc/passwd.txt");
+    const up = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${u.token}` }, body: fd });
+    expect(up.status).toBe(200);
+    const docId = (await up.json() as any).documentId;
+    await new Promise((r) => setTimeout(r, 1200));
+    const row = get<any>("SELECT filename FROM documents WHERE id = ?", [docId]);
+    expect(row.filename).not.toContain("/");
+    expect(row.filename).not.toContain("..");
+    await cleanupUser(u.id);
+  });
+});
+
+describe("security summary endpoint", () => {
+  it("publishes the deployment's security posture", async () => {
+    const res = await fetch(`${base}/security/summary`);
+    expect(res.status).toBe(200);
+    const d = await res.json() as any;
+    expect(d.auth.passwordHashing).toMatch(/bcrypt/i);
+    expect(d.privacy.documents).toMatch(/owned per account/i);
+    expect(d.input.sql).toMatch(/parameterised/i);
+  });
+});
+
+describe("guest isolation", () => {
+  it("gives every guest a distinct identity", async () => {
+    const a = await fetch(`${base}/auth/guest`, { method: "POST" });
+    const b = await fetch(`${base}/auth/guest`, { method: "POST" });
+    const ab = await a.json() as any;
+    const bb = await b.json() as any;
+    expect(ab.user.id).not.toBe(bb.user.id);
+    expect(ab.user.email).toMatch(/^guest_[0-9a-f]+@guest\.researchlens\.local$/);
+    await cleanupUser(ab.user.id);
+    await cleanupUser(bb.user.id);
+  });
+
+  it("never lets a guest sign in with a password", async () => {
+    const g = await fetch(`${base}/auth/guest`, { method: "POST" });
+    const gb = await g.json() as any;
+    const res = await fetch(`${base}/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: gb.user.email, password: "anything" }),
+    });
+    expect(res.status).toBe(401);
+    await cleanupUser(gb.user.id);
+  });
+});
+
+describe("relevance ranking", () => {
+  it("orders results by relevance to the query instead of insertion order", async () => {
+    const res = await fetch(`${base}/papers?search=phishing%20url%20detection&limit=10`);
+    expect(res.status).toBe(200);
+    const d = await res.json() as any;
+    expect(d.items.length).toBeGreaterThan(0);
+    // The strongest title-level match must be ranked first.
+    expect(d.items[0].title.toLowerCase()).toContain("phishing");
+    const scores = d.items.map((p: any) => p.relevance);
+    for (let i = 1; i < scores.length; i++) expect(scores[i]).toBeLessThanOrEqual(scores[i - 1]);
+  });
+
+  it("filters by topic through the paper_topics relation", async () => {
+    const res = await fetch(`${base}/papers?topic=Graph%20Learning`);
+    expect(res.status).toBe(200);
+    const d = await res.json() as any;
+    for (const p of d.items) {
+      const t = all<any>(
+        "SELECT t.name FROM paper_topics pt JOIN topics t ON t.id = pt.topic_id WHERE pt.paper_id = ?",
+        [p.id]
+      ).map((r: any) => r.name);
+      expect(t).toContain("Graph Learning");
+    }
+  });
+});
+
+describe("citation neighbourhood", () => {
+  it("returns the citing and cited papers of a paper", async () => {
+    const list = await (await fetch(`${base}/papers?limit=50`)).json() as any;
+    const withEdge = list.items.find((p: any) => true);
+    const res = await fetch(`${base}/papers/${withEdge.id}/citations`);
+    expect(res.status).toBe(200);
+    const d = await res.json() as any;
+    expect(d.paper.id).toBe(withEdge.id);
+    expect(Array.isArray(d.cites)).toBe(true);
+    expect(Array.isArray(d.citedBy)).toBe(true);
+  });
 });

@@ -4,15 +4,24 @@
 
 /* ============================================================
    ResearchLens AI — design system
+
    Semantic tokens so contrast holds in BOTH light and dark mode.
    Light-mode slate-400 (#94a3b8) is only 2.6:1 on white and
    fails WCAG AA for body text, so real copy uses .text-body /
    .text-muted instead of raw slate-400.
+
+   Motion rules:
+     - transitions run 150–300ms with an ease-out curve
+     - every animation is disabled under prefers-reduced-motion
+     - nothing animates on scroll; only state changes animate
    ============================================================ */
 
 @layer base {
   :root {
     color-scheme: light dark;
+    --rl-brand: #4f46e5;
+    --rl-brand-2: #7c3aed;
+    --rl-glow: 99 102 241;
   }
 
   * {
@@ -27,8 +36,9 @@
   body {
     @apply bg-slate-50 text-slate-800 antialiased dark:bg-[#0a0f1e] dark:text-slate-200;
     background-image:
-      radial-gradient(55rem 38rem at 88% -12%, rgb(99 102 241 / 0.09), transparent 62%),
-      radial-gradient(45rem 32rem at 2% -4%, rgb(139 92 246 / 0.07), transparent 60%);
+      radial-gradient(55rem 38rem at 88% -12%, rgb(99 102 241 / 0.10), transparent 62%),
+      radial-gradient(45rem 32rem at 2% -4%, rgb(139 92 246 / 0.08), transparent 60%),
+      radial-gradient(38rem 30rem at 50% 110%, rgb(6 182 212 / 0.06), transparent 60%);
     background-attachment: fixed;
   }
 
@@ -41,19 +51,13 @@
     @apply outline-none outline-2 outline-offset-2 outline-indigo-500 dark:outline-indigo-400;
   }
 
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-slate-300 dark:bg-white/15;
+    @apply rounded-full bg-slate-300 transition-colors dark:bg-white/15;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-400 dark:bg-white/25;
-  }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400 dark:bg-white/25; }
 
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -74,47 +78,45 @@
            dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/20;
   }
   .card-hover {
-    @apply transition duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/5
+    @apply transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-indigo-300
+           hover:shadow-lg hover:shadow-indigo-500/10
            dark:hover:border-indigo-400/40 dark:hover:shadow-indigo-500/10;
   }
   .card-inset {
-    @apply rounded-xl bg-slate-100/80 p-4 dark:bg-white/[0.04];
+    @apply rounded-xl bg-slate-100/80 p-4 transition-colors duration-200 dark:bg-white/[0.04];
   }
   .panel {
     @apply rounded-2xl border border-slate-200/70 bg-gradient-to-b from-white to-slate-50/60
            dark:border-white/10 dark:from-white/[0.05] dark:to-transparent;
   }
+  /* Frosted surface used by the sticky header and floating panels. */
+  .glass {
+    @apply bg-white/75 backdrop-blur-xl backdrop-saturate-150 dark:bg-[#0a0f1e]/75;
+  }
 
   /* ---------------- text ---------------- */
-  .text-body {
-    @apply text-slate-700 dark:text-slate-200;
-  }
-  .text-muted {
-    @apply text-slate-600 dark:text-slate-400;
-  }
-  .text-faint {
-    @apply text-slate-500 dark:text-slate-400;
-  }
+  .text-body { @apply text-slate-700 dark:text-slate-200; }
+  .text-muted { @apply text-slate-600 dark:text-slate-400; }
+  .text-faint { @apply text-slate-500 dark:text-slate-400; }
   .gradient-text {
     @apply bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent;
   }
-  .stat-num {
-    @apply tabular-nums tracking-tight;
-  }
+  .stat-num { @apply tabular-nums tracking-tight; }
 
   /* ---------------- buttons ---------------- */
   .btn {
     @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl
-           px-4 py-2 text-sm font-medium leading-none transition duration-150
+           px-4 py-2 text-sm font-medium leading-none transition-all duration-200 ease-out
            active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-primary {
     @apply btn bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-600/25
-           hover:from-indigo-500 hover:to-violet-500 hover:shadow-xl hover:shadow-indigo-600/35;
+           hover:-translate-y-px hover:from-indigo-500 hover:to-violet-500 hover:shadow-xl hover:shadow-indigo-600/35
+           active:translate-y-0;
   }
   .btn-secondary {
     @apply btn border border-slate-300 bg-white text-slate-700 shadow-sm
-           hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900
+           hover:-translate-y-px hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 hover:shadow-md
            dark:border-white/15 dark:bg-white/[0.06] dark:text-slate-200
            dark:hover:border-white/25 dark:hover:bg-white/10 dark:hover:text-white;
   }
@@ -123,15 +125,11 @@
            dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
   }
   .btn-danger {
-    @apply btn border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100
+    @apply btn border border-rose-200 bg-rose-50 text-rose-700 hover:-translate-y-px hover:border-rose-300 hover:bg-rose-100 hover:shadow-md
            dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20;
   }
-  .btn-sm {
-    @apply rounded-lg px-3 py-1.5 text-xs;
-  }
-  .btn-lg {
-    @apply rounded-2xl px-5 py-2.5 text-base;
-  }
+  .btn-sm { @apply rounded-lg px-3 py-1.5 text-xs; }
+  .btn-lg { @apply rounded-2xl px-5 py-2.5 text-base; }
 
   /* ---------------- forms ---------------- */
   .input {
@@ -152,6 +150,7 @@
     background-position: right 0.75rem center;
     background-size: 1rem;
     background-repeat: no-repeat;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
   }
   .dark .select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -175,29 +174,16 @@
 
   /* ---------------- badges ---------------- */
   .badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium leading-tight;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium leading-tight
+           transition-colors duration-200;
   }
-  .badge-indigo {
-    @apply bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300;
-  }
-  .badge-emerald {
-    @apply bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300;
-  }
-  .badge-amber {
-    @apply bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300;
-  }
-  .badge-rose {
-    @apply bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300;
-  }
-  .badge-sky {
-    @apply bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300;
-  }
-  .badge-slate {
-    @apply bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300;
-  }
-  .badge-dot {
-    @apply h-1.5 w-1.5 rounded-full bg-current;
-  }
+  .badge-indigo { @apply bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300; }
+  .badge-emerald { @apply bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300; }
+  .badge-amber { @apply bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300; }
+  .badge-rose { @apply bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300; }
+  .badge-sky { @apply bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300; }
+  .badge-slate { @apply bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300; }
+  .badge-dot { @apply h-1.5 w-1.5 rounded-full bg-current; }
 
   /* ---------------- data display ---------------- */
   .skel {
@@ -208,11 +194,8 @@
     content: "";
     animation: shimmer 1.6s infinite;
   }
-  @keyframes shimmer {
-    100% {
-      transform: translateX(100%);
-    }
-  }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+
   .kbd {
     @apply inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-slate-300 bg-slate-100 px-1.5 font-sans text-[10px] font-medium text-slate-600
            dark:border-white/15 dark:bg-white/10 dark:text-slate-300;
@@ -221,32 +204,109 @@
     @apply rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 text-xs leading-relaxed text-amber-900
            dark:border-amber-500/25 dark:bg-amber-500/[0.08] dark:text-amber-200;
   }
+  .note-info {
+    @apply rounded-xl border border-sky-200 bg-sky-50/70 px-3.5 py-2.5 text-xs leading-relaxed text-sky-900
+           dark:border-sky-500/25 dark:bg-sky-500/[0.08] dark:text-sky-200;
+  }
   .link {
     @apply font-medium text-indigo-700 underline-offset-4 transition hover:text-indigo-800 hover:underline
            dark:text-indigo-300 dark:hover:text-indigo-200;
   }
   .chip {
-    @apply inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition
-           hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700
+    @apply inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-all duration-200
+           hover:-translate-y-px hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm hover:shadow-indigo-500/10
            dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300
            dark:hover:border-indigo-400/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200;
   }
   .icon-btn {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition
-           hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-all duration-200
+           hover:-translate-y-px hover:bg-slate-200/70 hover:text-slate-900 hover:shadow-sm
+           dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white;
   }
   .icon-btn-sm {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition
-           hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-white;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-all duration-200
+           hover:-translate-y-px hover:bg-slate-200/70 hover:text-slate-900
+           dark:hover:bg-white/10 dark:hover:text-white;
   }
   .segment {
     @apply relative flex rounded-xl border border-slate-200 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-white/[0.04];
   }
   .segment-item {
-    @apply relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition
-           dark:text-slate-400;
+    @apply relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition-all duration-200
+           hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200;
   }
   .segment-item-active {
     @apply bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white;
   }
+
+  /* ---------------- motion ---------------- */
+  .animate-fade-in { animation: rl-fade-in 220ms ease-out both; }
+  .animate-slide-in { animation: rl-slide-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-rise { animation: rl-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-glow { animation: rl-glow 2.6s ease-in-out infinite; }
+
+  @keyframes rl-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes rl-slide-in {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes rl-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes rl-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(var(--rl-glow) / 0.35); }
+    50% { box-shadow: 0 0 0 10px rgb(var(--rl-glow) / 0); }
+  }
+
+  /* Staggered entrance for grid children. */
+  .stagger > * { animation: rl-rise 340ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(7) { animation-delay: 240ms; }
+  .stagger > *:nth-child(8) { animation-delay: 280ms; }
+}
+
+/* ============================================================
+   Print — the "Export PDF" action uses window.print(), so the
+   report needs a real print stylesheet: hide the chrome, force
+   light colours, keep cards and charts legible on paper.
+   ============================================================ */
+@media print {
+  @page { margin: 14mm; size: A4; }
+
+  html, body {
+    background: #fff !important;
+    background-image: none !important;
+    color: #0f172a !important;
+  }
+
+  header, aside, nav, .no-print { display: none !important; }
+
+  main { max-width: none !important; padding: 0 !important; }
+
+  .card, .panel {
+    border: 1px solid #cbd5e1 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .text-body, .text-muted, .text-faint { color: #0f172a !important; }
+
+  h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+
+  a { text-decoration: none !important; color: #0f172a !important; }
+
+  .badge { border: 1px solid #94a3b8 !important; background: #f8fafc !important; color: #0f172a !important; }
+
+  svg { max-width: 100% !important; }
 }
