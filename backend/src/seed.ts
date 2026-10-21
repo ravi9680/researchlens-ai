@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { run, get, all } from "./db.js";
-import { localEmbed, chunkText } from "./services/textUtils.js";
+import { chunkText } from "./services/textUtils.js";
+import { embedSync } from "./services/embedding.js";
 import { invalidateChunkCache } from "./services/similarity.js";
 
 /* Research knowledge base — REAL academic-style papers (not fake/demo).
@@ -49,12 +50,12 @@ function saveOne(d: (typeof DEMO)[number]) {
   }
   for (const c of chunkText(d.abstract, 120, 20)) {
     run("INSERT INTO paper_chunks (id, paper_id, section, content, embedding) VALUES (?,?,?,?,?)",
-      [randomUUID(), id, "Abstract", c, JSON.stringify(localEmbed(c))]);
+      [randomUUID(), id, "Abstract", c, JSON.stringify(embedSync(c))]);
   }
   for (const secName of ["Introduction", "Methodology", "Results", "Conclusion"]) {
     for (const c of chunkText(`${d.title} ${secName}. ${d.abstract}`, 120, 20).slice(0, 2)) {
       run("INSERT INTO paper_chunks (id, paper_id, section, content, embedding) VALUES (?,?,?,?,?)",
-        [randomUUID(), id, secName, c, JSON.stringify(localEmbed(c))]);
+        [randomUUID(), id, secName, c, JSON.stringify(embedSync(c))]);
     }
   }
   return "ok";

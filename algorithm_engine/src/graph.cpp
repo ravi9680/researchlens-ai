@@ -57,12 +57,33 @@ int Graph::dfs(int start, int* order) const {
 
 int Graph::components(int* comp) {
     for (int i = 0; i < n_; i++) comp[i] = -1;
+
+    /* Weakly connected components: edge direction is ignored.
+     * A citation network is explored as an undirected community graph, so the
+     * result must not depend on whether edges point citing->cited or the
+     * reverse. Traversing only outgoing edges (as a directed BFS would) splits
+     * a simple chain into one component per node.
+     *
+     * Cost: O(V+E) time and space. */
+    std::vector<std::vector<int>> rev(n_);
+    for (int u = 0; u < n_; u++)
+        for (GEdge* e = adj_[u]; e; e = e->next)
+            rev[e->to].push_back(u);
+
+    std::vector<int> stack(n_);
     int nc = 0;
-    std::vector<int> order(n_), dist(n_);
     for (int i = 0; i < n_; i++) {
         if (comp[i] != -1) continue;
-        int c = bfs(i, order.data(), dist.data());
-        for (int k = 0; k < c; k++) comp[order[k]] = nc;
+        int top = 0;
+        stack[top++] = i;
+        comp[i] = nc;
+        while (top > 0) {
+            int u = stack[--top];
+            for (GEdge* e = adj_[u]; e; e = e->next)
+                if (comp[e->to] == -1) { comp[e->to] = nc; stack[top++] = e->to; }
+            for (int v : rev[u])
+                if (comp[v] == -1) { comp[v] = nc; stack[top++] = v; }
+        }
         nc++;
     }
     return nc;

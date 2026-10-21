@@ -35,7 +35,7 @@ Bridge: `backend/src/services/cEngine.ts` (JSON stdin/stdout, 8s timeout,
 | Weighted aggregate (0.35/0.25/0.25/0.15) | fuse tfidf+jaccard+cos+tri | → 0–100 lexical score | O(1) |
 | Heap top-K + min-max normalize | bounded ranking + display scale | 5 scored → top-3 desc | O(n log K) |
 | BFS / DFS | reachable citations from a paper | chain 0→3, dist[3]=3 | O(V+E) |
-| Connected components | research-community clusters | 1 comp on chain | O(V+E) |
+| Connected components (weak) | research-community clusters | 1 comp on chain, either edge direction | O(V+E) |
 | BFS shortest path | closest citation link | 0→3 = 3 hops | O(V+E) |
 | PageRank (d=0.85) | graph-position importance (≠ quality) | sink ranks highest | O(iters·(V+E)) |
 | FNV-1a fingerprint | non-crypto doc identity/dup check | `hello world research → 2530…` | O(n) |

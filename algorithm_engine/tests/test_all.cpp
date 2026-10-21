@@ -114,6 +114,28 @@ int main(void) {
     g.pagerank(rank, 20);
     CHECK(rank[3] > rank[0], "pagerank sink higher");
 
+    /* components must ignore edge direction: a citation chain stored as
+     * citing->cited (reversed relative to the chain above) is still ONE
+     * community, not one component per node. */
+    Graph gr(4);
+    gr.add_edge(3, 2); gr.add_edge(2, 1); gr.add_edge(1, 0);
+    int compr[8];
+    CHECK(gr.components(compr) == 1, "components connected (reversed edges)");
+    CHECK(compr[0] == compr[3], "same component id across chain");
+
+    /* genuinely disconnected pairs stay separate */
+    Graph gd(4);
+    gd.add_edge(0, 1); gd.add_edge(2, 3);
+    int compd[8];
+    CHECK(gd.components(compd) == 2, "components disconnected");
+    CHECK(compd[0] == compd[1] && compd[0] != compd[2], "component ids differ");
+
+    /* an isolated node forms its own component */
+    Graph gi(3);
+    gi.add_edge(0, 1);
+    int compi[8];
+    CHECK(gi.components(compi) == 2, "components with isolated node");
+
     std::printf("ALL C++ TESTS PASSED (%d checks)\n", passed);
     return 0;
 }
