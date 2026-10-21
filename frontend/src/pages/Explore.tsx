@@ -6,23 +6,25 @@ import { Card, PageTitle, Empty } from "../components/Layout";
 import { Bookmark, Bookmark as BookmarkFill } from "lucide-react";
 
 export function Explorer() {
-  const [s, setS] = useState({ search: "", topic: "", sort: "relevance" });
-  const q = useQuery({ queryKey: ["papers", s], queryFn: () => api.papers({ ...s, limit: "12" }) });
+  const [s, setS] = useState({ search: "", topic: "", sort: "relevance", page: 1 });
+  const q = useQuery({ queryKey: ["papers", s], queryFn: () => api.papers({ ...s, limit: "12", page: String(s.page) }) });
+  const total: number = (q.data as any)?.total || 0;
+  const totalPages = Math.ceil(total / 12);
 
-  // Get saved IDs from localStorage
-  const savedIds = JSON.parse(localStorage.getItem("researchlens_saved") || "[]");
+  // Keep savedIds in state so toggling triggers re-render
+  const [savedIds, setSavedIds] = useState<string[]>(() =>
+    JSON.parse(localStorage.getItem("researchlens_saved") || "[]")
+  );
 
   const isSaved = (id: string) => savedIds.includes(id);
 
   const toggleSave = (id: string) => {
     const current = JSON.parse(localStorage.getItem("researchlens_saved") || "[]");
-    if (current.includes(id)) {
-      localStorage.setItem("researchlens_saved", JSON.stringify(current.filter((x: string) => x !== id)));
-    } else {
-      localStorage.setItem("researchlens_saved", JSON.stringify([...current, id]));
-    }
-    // Trigger re-render by updating a dummy state
-    setS({ ...s });
+    const next = current.includes(id)
+      ? current.filter((x: string) => x !== id)
+      : [...current, id];
+    localStorage.setItem("researchlens_saved", JSON.stringify(next));
+    setSavedIds(next);
   };
 
   return (
@@ -30,8 +32,8 @@ export function Explorer() {
       <PageTitle title="Research explorer" sub="Search the knowledge base" />
       <Card>
         <div className="grid gap-2 sm:grid-cols-4">
-          <input className="input sm:col-span-2" placeholder="Search title / abstract…" value={s.search} onChange={(e) => setS({ ...s, search: e.target.value })} />
-          <select className="input" value={s.topic} onChange={(e) => setS({ ...s, topic: e.target.value })}>
+          <input className="input sm:col-span-2" placeholder="Search title / abstract…" value={s.search} onChange={(e) => setS({ ...s, search: e.target.value, page: 1 })} />
+          <select className="input" value={s.topic} onChange={(e) => setS({ ...s, topic: e.target.value, page: 1 })}>
             <option value="">All topics</option>
             <option value="Phishing & URL Security">Phishing & URL Security</option>
             <option value="Transformers & LLMs">Transformers & LLMs</option>
@@ -44,7 +46,7 @@ export function Explorer() {
             <option value="Medical AI">Medical AI</option>
             <option value="NLP & Text Classification">NLP & Text Classification</option>
           </select>
-          <select className="input" value={s.sort} onChange={(e) => setS({ ...s, sort: e.target.value })}><option value="relevance">Relevance</option><option value="year">Newest</option><option value="citations">Cited</option></select>
+          <select className="input" value={s.sort} onChange={(e) => setS({ ...s, sort: e.target.value, page: 1 })}><option value="relevance">Relevance</option><option value="year">Newest</option><option value="citations">Cited</option></select>
         </div>
       </Card>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -68,6 +70,13 @@ export function Explorer() {
       </div>
       {q.isLoading && <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="skel h-32" /><div className="skel h-32" /></div>}
       {(q.data as any)?.total === 0 && <div className="mt-4"><Empty text="No papers match. Try ingestion for this topic." /></div>}
+      {totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <button className="btn border border-slate-300 dark:border-white/15" disabled={s.page === 1} onClick={() => setS({ ...s, page: s.page - 1 })}>← Prev</button>
+          <span className="text-sm text-slate-500">Page {s.page} of {totalPages}</span>
+          <button className="btn border border-slate-300 dark:border-white/15" disabled={s.page >= totalPages} onClick={() => setS({ ...s, page: s.page + 1 })}>Next →</button>
+        </div>
+      )}
     </div>
   );
 }

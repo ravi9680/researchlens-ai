@@ -1,25 +1,39 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api } from "../lib/api";
 import { Card, PageTitle, ScoreBar, Empty } from "../components/Layout";
+import { Trash2 } from "lucide-react";
 
 export function Dashboard() {
   const dash = useQuery({ queryKey: ["dash"], queryFn: api.dashboard });
   const trends = useQuery({ queryKey: ["trends"], queryFn: api.trends });
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+
   if (dash.isLoading) return <div className="grid gap-4 sm:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skel h-24" />)}</div>;
   if (dash.isError) return <Empty text="Backend unreachable. Start it with `npm --prefix backend run dev`." />;
   const d: any = dash.data;
   const cards = [
     ["Indexed papers", d.totalPapers], ["Authors", d.totalAuthors], ["Topics", d.totalTopics], ["Avg similarity", `${d.avgSimilarity}%`],
   ];
-  async function delDoc(id: string) {
-    if (!confirm("Delete this analysis?")) return;
+
+  async function confirmDelete(id: string) {
+    setDeletingId(id);
+    setDeleteError("");
+  }
+
+  async function doDelete(id: string) {
     try {
       await api.removeDoc(id);
+      setDeletingId(null);
       dash.refetch();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) {
+      setDeleteError(e.message);
+    }
   }
+
   return (
     <div>
       <PageTitle title="Dashboard" sub="Research intelligence at a glance" />
@@ -35,15 +49,30 @@ export function Dashboard() {
           <h3 className="mb-3 text-sm font-medium">Recent analyses</h3>
           <div className="space-y-2">
             {(d.recent || []).map((r: any) => (
-              <div key={r.id} className="rounded-xl border border-slate-200 p-3 text-sm hover:border-indigo-400 dark:border-white/10 flex items-center justify-between">
-                <div>
-                  <Link to={r.stage === "DONE" ? `/app/results/${r.id}` : `/app/processing/${r.id}`} className="font-medium hover:underline">{r.title || "Untitled"}</Link>
-                  <p className="mt-1 text-xs text-slate-500">{r.stage} · {r.progress}%</p>
+              <div key={r.id} className="rounded-xl border border-slate-200 p-3 text-sm hover:border-indigo-400 dark:border-white/10">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Link to={r.stage === "DONE" ? `/app/results/${r.id}` : `/app/processing/${r.id}`} className="font-medium hover:underline truncate block">{r.title || "Untitled"}</Link>
+                    <p className="mt-1 text-xs text-slate-500">{r.stage} · {r.progress}%</p>
+                    <div className="mt-2"><ScoreBar v={r.progress} /></div>
+                  </div>
+                  <button
+                    className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-colors"
+                    title="Delete analysis"
+                    onClick={() => confirmDelete(r.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="mt-2"><ScoreBar v={r.progress} /></div>
-                  <button className="btn text-xs border border-slate-300 dark:border-white/15" onClick={() => delDoc(r.id)}>Delete</button>
-                </div>
+                {/* Inline delete confirmation */}
+                {deletingId === r.id && (
+                  <div className="mt-2 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 dark:bg-rose-500/10">
+                    <p className="flex-1 text-xs text-rose-600">Delete this analysis?</p>
+                    <button className="text-xs font-medium text-rose-600 hover:underline" onClick={() => doDelete(r.id)}>Yes, delete</button>
+                    <button className="text-xs text-slate-500 hover:underline" onClick={() => { setDeletingId(null); setDeleteError(""); }}>Cancel</button>
+                  </div>
+                )}
+                {deletingId === r.id && deleteError && <p className="mt-1 text-xs text-rose-500">{deleteError}</p>}
               </div>
             ))}
             {!(d.recent || []).length && <p className="text-sm text-slate-500">No analyses yet — upload your first paper.</p>}

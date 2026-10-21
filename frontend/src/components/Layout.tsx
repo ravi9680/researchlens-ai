@@ -16,9 +16,18 @@ const LINKS = [
 
 export function Layout() {
   const nav = useNavigate();
-  const [dark, setDark] = useState(document.documentElement.classList.contains("dark"));
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem("rl_dark");
+    if (saved !== null) return saved === "true";
+    return document.documentElement.classList.contains("dark");
+  });
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+  }, [dark]);
 
   useEffect(() => {
     const token = localStorage.getItem("rl_token");
@@ -27,17 +36,26 @@ export function Layout() {
       return;
     }
     api.token = token;
-    api.me().then((d: any) => setUser(d)).catch(() => {
+    api.me().then((d: any) => {
+      setUser(d);
+      if (d.role === "admin") setIsAdmin(true);
+    }).catch(() => {
       localStorage.removeItem("rl_token");
       nav("/app/auth");
-    });
-    api.me().then((d: any) => {
-      if (d.role === "admin") setIsAdmin(true);
-    }).catch(() => {});
+    }).finally(() => setAuthLoading(false));
   }, [nav]);
 
-  if (!user) {
-    return null; // loading
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white animate-pulse">
+            <Sparkles size={22} />
+          </span>
+          <p className="text-sm text-slate-500">Loading ResearchLens…</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -54,7 +72,7 @@ export function Layout() {
               <span className="font-medium">{user.name || user.email}</span>
               {isAdmin && <span className="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">ADMIN</span>}
             </div>
-            <button className="btn" onClick={() => { const d = !dark; setDark(d); document.documentElement.classList.toggle("dark", d); }} aria-label="theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
+            <button className="btn" onClick={() => { const d = !dark; setDark(d); localStorage.setItem("rl_dark", String(d)); }} aria-label="theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
             <button className="btn-primary whitespace-nowrap text-xs sm:text-sm" onClick={() => nav("/app/upload")}><Upload size={15} /> Upload paper</button>
             <button className="btn border border-slate-300 dark:border-white/15" onClick={() => { api.token = ""; localStorage.removeItem("rl_token"); nav("/app/auth"); }}><LogOut size={15} /> Logout</button>
           </div>
