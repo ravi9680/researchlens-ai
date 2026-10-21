@@ -17,8 +17,22 @@ export function Saved() {
     onError: (e: any) => setError(e.message),
   });
 
-  const clearAll = () => {
-    for (const id of saved.ids) remove.mutate(id);
+  /* Remove bookmarks one after another. Firing every mutation at once
+   * would issue N parallel writes and invalidate the query N times; the
+   * sequential version is both gentler on the server and leaves the list
+   * in a consistent state. */
+  const [clearing, setClearing] = useState(false);
+  const clearAll = async () => {
+    setClearing(true);
+    setError("");
+    try {
+      for (const id of saved.ids) {
+        await api.savePaper(id).catch((e: any) => setError(e.message));
+      }
+      qc.invalidateQueries({ queryKey: ["saved-papers"] });
+    } finally {
+      setClearing(false);
+    }
   };
 
   if (saved.isLoading) {
@@ -43,8 +57,8 @@ export function Saved() {
             </Link>
           )}
           {saved.ids.length > 0 && (
-            <button onClick={clearAll} className="btn-danger btn-sm">
-              <Trash2 size={14} /> Clear all
+            <button onClick={clearAll} className="btn-danger btn-sm" disabled={clearing}>
+              <Trash2 size={14} /> {clearing ? "Clearing…" : "Clear all"}
             </button>
           )}
         </div>
@@ -64,8 +78,18 @@ export function Saved() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {saved.papers.map((p: any) => (
-            <Link key={p.id} to={`/app/paper/${p.id}`} className="card card-hover group p-4">
-              <div className="flex items-start justify-between gap-3">
+            /* Stretched link: the card is a container, the link covers it,
+               and the remove button sits above it. Nesting a <button>
+               inside a <Link> is invalid HTML and breaks keyboard use. */
+            <div key={p.id} className="card card-hover group relative p-4">
+              <Link
+                to={`/app/paper/${p.id}`}
+                className="absolute inset-0 z-0 rounded-2xl"
+                aria-label={p.title}
+              >
+                <span className="sr-only">Open {p.title}</span>
+              </Link>
+              <div className="pointer-events-none relative z-10 flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-body transition group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
                     {p.title}
@@ -80,15 +104,15 @@ export function Saved() {
                   <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">{p.abstract}</p>
                 </div>
                 <button
-                  onClick={(e) => { e.preventDefault(); remove.mutate(p.id); }}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/20 text-amber-600 transition hover:bg-rose-500/15 hover:text-rose-500"
+                  onClick={() => remove.mutate(p.id)}
+                  className="pointer-events-auto relative z-20 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/20 text-amber-600 transition hover:bg-rose-500/15 hover:text-rose-500"
                   title="Remove bookmark"
-                  aria-label="Remove bookmark"
+                  aria-label={`Remove bookmark for ${p.title}`}
                 >
                   <Bookmark size={16} fill="currentColor" />
                 </button>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
