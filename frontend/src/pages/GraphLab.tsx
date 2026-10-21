@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { Card, PageTitle, Empty } from "../components/Layout";
 import { Network, Cpu, Info, Layers, TrendingUp } from "lucide-react";
 
-const W = 820, H = 560, CX = W / 2, CY = H / 2, R = 205;
+const W = 820, H = 620, CX = W / 2, CY = H / 2, R = 262;
 
 const COMP_COLORS = [
   "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#06b6d4",
@@ -62,7 +62,7 @@ export function GraphLab() {
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_330px]">
-        <Card>
+        <Card className="flex flex-col">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="badge badge-indigo">Node size = PageRank</span>
             <span className="badge badge-emerald">Colour = community</span>
@@ -75,13 +75,19 @@ export function GraphLab() {
             )}
           </div>
 
-          <div className="overflow-hidden rounded-xl bg-slate-50/60 dark:bg-white/[0.02]">
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+          {/* The graph grows to fill whatever height the side panel gives it,
+              so the card never ends in a large empty area. */}
+          <div className="relative flex-1 overflow-hidden rounded-xl bg-slate-50/60 dark:bg-white/[0.02]">
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="h-full min-h-[420px] w-full">
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
                 </marker>
               </defs>
+
+              {/* faint guide ring so the circular layout reads as intentional */}
+              <circle cx={CX} cy={CY} r={R} fill="none" stroke="currentColor"
+                className="text-slate-200/70 dark:text-white/[0.06]" strokeWidth={1} strokeDasharray="3 7" />
 
               {edges.map((e, i) => {
                 const a = pos.get(e.source), b = pos.get(e.target);
@@ -102,6 +108,9 @@ export function GraphLab() {
                 const isActive = active?.index === n.index;
                 const isNeighbour = neighbours.has(n.index);
                 const dim = active && !isActive && !isNeighbour;
+                /* Labels only for the more central nodes once the graph gets
+                   busy — otherwise they overlap into an unreadable smear. */
+                const showLabel = showLabels && !dim && (nodes.length <= 14 || (n.pagerank || 0) >= maxPr * 0.55);
                 return (
                   <g
                     key={n.id}
@@ -124,13 +133,13 @@ export function GraphLab() {
                       stroke={isActive ? "#0f172a" : "white"} strokeWidth={isActive ? 2.5 : 1.5}
                       className="transition-all duration-200 hover:brightness-110 dark:stroke-slate-900"
                     />
-                    {showLabels && !dim && (
+                    {showLabel && (
                       <text
                         x={p.x} y={p.y - radiusOf(n) - 6} textAnchor="middle"
-                        fontSize={9.5} className="fill-slate-600 dark:fill-slate-300"
+                        fontSize={10} className="fill-slate-600 dark:fill-slate-300"
                         style={{ pointerEvents: "none" }}
                       >
-                        {(n.title || "").length > 26 ? `${n.title.slice(0, 25)}…` : n.title}
+                        {(n.title || "").length > 24 ? `${n.title.slice(0, 23)}…` : n.title}
                       </text>
                     )}
                   </g>

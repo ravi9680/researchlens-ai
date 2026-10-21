@@ -34,9 +34,21 @@ A student uploads a research paper (**PDF / DOCX / TXT**). The platform analyses
 |---|---|
 | ![Dashboard](docs/screenshots/02-dashboard.png) | ![Results](docs/screenshots/03-results.png) |
 
-| Citation graph | Algorithm explorer |
+| Citation graph | Security posture |
 |---|---|
-| ![Graph](docs/screenshots/04-graph.png) | ![Algorithms](docs/screenshots/05-algorithms.png) |
+| ![Graph](docs/screenshots/04-graph.png) | ![Security](docs/screenshots/07-security.png) |
+
+| Algorithm explorer | Research explorer |
+|---|---|
+| ![Algorithms](docs/screenshots/05-algorithms.png) | ![Explorer](docs/screenshots/08-explorer.png) |
+
+| Landing | Upload |
+|---|---|
+| ![Landing](docs/screenshots/01-landing.png) | ![Upload](docs/screenshots/06-upload.png) |
+
+| Trends | Paper detail |
+|---|---|
+| ![Trends](docs/screenshots/09-trends.png) | ![Paper](docs/screenshots/11-paper.png) |
 
 ---
 

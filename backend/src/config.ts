@@ -54,7 +54,6 @@ export const config = {
   maxFileMb: int(process.env.MAX_FILE_MB, 25),
   crossrefEmail: process.env.CROSSREF_EMAIL || "",
   openalexEmail: process.env.OPENALEX_EMAIL || "",
-  semanticScholarKey: process.env.SEMANTIC_SCHOLAR_API_KEY || "",
 
   /* ---- security limits ---- */
   bcryptRounds: int(process.env.BCRYPT_ROUNDS, isProduction ? 12 : 10),

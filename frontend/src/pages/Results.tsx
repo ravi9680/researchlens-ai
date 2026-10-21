@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
+import { useReducedMotion } from "../lib/motion";
 import { Card, PageTitle, ScoreBar, Empty } from "../components/Layout";
 import {
   Download, ChevronDown, ChevronUp, FileText, Zap, Brain,
@@ -83,6 +84,7 @@ function Collapsible({ title, icon: Icon, children, defaultOpen = false }: any) 
 
 /* ── main component ───────────────────────────────────── */
 export function Results() {
+  const reduced = useReducedMotion();
   const { id = "" } = useParams();
   const q = useQuery({ queryKey: ["report", id], queryFn: () => api.report(id) });
   if (q.isLoading) return (
@@ -307,7 +309,7 @@ export function Results() {
                   <RadarChart data={radarData}>
                     <PolarGrid stroke="rgba(100,100,100,0.15)" />
                     <PolarAngleAxis dataKey="section" tick={{ fontSize: 11 }} />
-                    <Radar dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.25} />
+                    <Radar dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.25} isAnimationActive={!reduced} />
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
@@ -351,7 +353,7 @@ export function Results() {
                 <XAxis type="number" domain={[0, 100]} fontSize={11} />
                 <YAxis type="category" dataKey="name" width={130} fontSize={10} />
                 <Tooltip formatter={(v: any) => `${v}%`} />
-                <Bar dataKey="score" radius={[0, 6, 6, 0]}>
+                <Bar dataKey="score" radius={[0, 6, 6, 0]} isAnimationActive={!reduced}>
                   {paperBarData.map((entry: any, i: number) => (
                     <Cell key={i} fill={entry.score >= 70 ? "#ef4444" : entry.score >= 40 ? "#f59e0b" : "#10b981"} />
                   ))}

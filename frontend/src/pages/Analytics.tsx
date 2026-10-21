@@ -4,12 +4,14 @@ import {
   PieChart, Pie, Cell, Tooltip as PieTooltip,
 } from "recharts";
 import { api } from "../lib/api";
+import { useReducedMotion } from "../lib/motion";
 import { Card, PageTitle, Empty } from "../components/Layout";
 import { TrendingUp, PieChart as PieIcon, Flame } from "lucide-react";
 
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#84cc16", "#14b8a6", "#f97316"];
 
 export function Trends() {
+  const reduced = useReducedMotion();
   const q = useQuery<any>({ queryKey: ["trends"], queryFn: api.trends });
 
   if (q.isLoading) return <div className="grid gap-4 lg:grid-cols-2"><div className="skel h-72" /><div className="skel h-72" /></div>;
@@ -64,7 +66,7 @@ export function Trends() {
                 <XAxis dataKey="year" fontSize={11} tickLine={false} axisLine={false} stroke="#94a3b8" />
                 <YAxis fontSize={11} tickLine={false} axisLine={false} stroke="#94a3b8" allowDecimals={false} />
                 <Tooltip cursor={{ fill: "rgba(99,102,241,0.08)" }} contentStyle={tooltipStyle} />
-                <Bar dataKey="count" fill="url(#trendBar)" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                <Bar dataKey="count" fill="url(#trendBar)" radius={[6, 6, 0, 0]} maxBarSize={48} isAnimationActive={!reduced} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -84,7 +86,7 @@ export function Trends() {
                   ))}
                 </defs>
                 <Pie
-                  data={topics} dataKey="count" nameKey="topic" outerRadius={96} innerRadius={48} paddingAngle={2}
+                  data={topics} dataKey="count" nameKey="topic" outerRadius={96} innerRadius={48} paddingAngle={2} isAnimationActive={!reduced}
                   label={({ topic, count }: any) => `${topic} · ${count}`}
                   labelLine={false}
                 >

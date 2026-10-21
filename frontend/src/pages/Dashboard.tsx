@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api } from "../lib/api";
+import { useReducedMotion } from "../lib/motion";
 import { Card, PageTitle, ScoreBar, Empty } from "../components/Layout";
 import {
   Trash2, BookOpen, Users, Tags, Gauge, Upload, Layers, Network, Cpu, Database, ArrowRight, ShieldCheck,
 } from "lucide-react";
 
 export function Dashboard() {
+  const reduced = useReducedMotion();
   const dash = useQuery({ queryKey: ["dash"], queryFn: api.dashboard });
   const trends = useQuery({ queryKey: ["trends"], queryFn: api.trends });
   const kb = useQuery<any>({ queryKey: ["kb-stats"], queryFn: api.kb });
@@ -97,7 +99,7 @@ export function Dashboard() {
                   cursor={{ fill: "rgba(99,102,241,0.08)" }}
                   contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12, boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
                 />
-                <Bar dataKey="count" fill="url(#barFill)" radius={[6, 6, 0, 0]} maxBarSize={44} />
+                <Bar dataKey="count" fill="url(#barFill)" radius={[6, 6, 0, 0]} maxBarSize={44} isAnimationActive={!reduced} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -15,10 +15,6 @@ export function getDb(): DatabaseSync {
   return db;
 }
 
-export function usePostgres(): boolean {
-  return Boolean(config.databaseUrl);
-}
-
 export function all<T = any>(sql: string, params: any[] = []): T[] {
   return getDb().prepare(sql).all(...params) as T[];
 }
