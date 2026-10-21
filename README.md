@@ -5,6 +5,7 @@
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://researchlens-cqn6.onrender.com)
 [![C Tests](https://img.shields.io/badge/C_tests-33_passed-blue)](algorithm_engine/tests/test_all.cpp)
 [![Backend Tests](https://img.shields.io/badge/backend_tests-22_passed-blue)](backend/src/api.test.ts)
+[![Frontend Tests](https://img.shields.io/badge/frontend_tests-16_passed-blue)](frontend/src/pages.smoke.test.tsx)
 [![License: Demo](https://img.shields.io/badge/data-demo_labelled-amber)](docs/DATABASE.md)
 
 **🌐 Live:** https://researchlens-cqn6.onrender.com &nbsp;·&nbsp; **First load takes ~1 min** (free tier wakes from sleep)
@@ -48,7 +49,7 @@ UPLOAD → PARSE → CHUNK → EMBED → C_ENGINE → SEMANTIC_SEARCH → SIMILA
 
 - **C engine** (`algorithm_engine/`) — KMP, Rabin-Karp, edit distance, LCS, TF-IDF + inverted index, Jaccard/cosine/trigram, hash table, Trie, heap top-K, BST, graph (BFS/DFS/components/PageRank). JSON stdin/stdout bridge, `make test` + `make asan`.
 - **Backend** (`backend/`, Node + TypeScript + Express) — pipeline orchestration, IDF-weighted 384-d embeddings (OpenAI swappable), SQLite dev store, Postgres + pgvector schema for production.
-- **Frontend** (`frontend/`, React + TS + Vite + Tailwind) — 21 routes, dark mode, mobile-ready.
+- **Frontend** (`frontend/`, React + TS + Vite + Tailwind) — 21 routes, dark mode, mobile-ready. Shared design system in `index.css` with WCAG-AA text tokens, semantic badges and a five-step button hierarchy.
 
 Lexical (C) and semantic (embeddings) scores are **reported separately, never conflated**.
 
@@ -73,9 +74,10 @@ Upload `backend/seed/samples/sample-paper.txt` (or any PDF) to see the full pipe
 
 ```bash
 npm run reembed   # rebuild search index (backend/) — needed after ingestion
-npx vitest run    # backend tests (backend/)
-make asan         # C sanitizer build (algorithm_engine/)
-npm run build     # production frontend (frontend/)
+npm test          # all suites: C engine + backend + frontend
+npm run test:c    # C engine only
+make -C algorithm_engine asan   # C sanitizer build
+npm run build:frontend           # production frontend
 ```
 
 ## Environment

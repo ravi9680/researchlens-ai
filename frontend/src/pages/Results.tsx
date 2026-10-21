@@ -46,11 +46,11 @@ function SimilarityGauge({ value }: { value: number }) {
         </svg>
         <div className="text-center">
           <p className="text-3xl font-bold" style={{ color }}>{value}%</p>
-          <p className="text-xs text-slate-500">{label}</p>
+          <p className="text-xs text-muted">{label}</p>
         </div>
       </div>
-      <p className="mt-3 text-center text-xs text-slate-500 max-w-[180px]">{description}</p>
-      <p className="mt-1 text-center text-xs font-medium text-slate-400">Relatedness — <b className="text-slate-500">NOT</b> plagiarism</p>
+      <p className="mt-3 text-center text-xs text-muted max-w-[180px]">{description}</p>
+      <p className="mt-1 text-center text-xs font-medium text-muted">Relatedness — <b className="text-muted">NOT</b> plagiarism</p>
     </div>
   );
 }
@@ -74,7 +74,7 @@ function Collapsible({ title, icon: Icon, children, defaultOpen = false }: any) 
           <Icon size={18} className="text-indigo-500" />
           <h3 className="font-semibold text-base">{title}</h3>
         </div>
-        {open ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
+        {open ? <ChevronUp size={18} className="text-muted" /> : <ChevronDown size={18} className="text-muted" />}
       </button>
       {open && <div className="mt-4">{children}</div>}
     </Card>
@@ -112,7 +112,7 @@ export function Results() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{r.title || "Research Analysis"}</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-muted">
             {r.filename} · {(r.userChunkCount || 0)} chunks analysed · {r.topics?.[0]?.topic}
           </p>
         </div>
@@ -131,16 +131,16 @@ export function Results() {
         </Card>
 
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">AI-Writing Signal</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted">AI-Writing Signal</p>
           <div className="mt-3">
             <Level l={r.ai?.level || "LOW"} />
-            <p className="mt-3 text-4xl font-bold">{r.ai?.score}<span className="text-lg text-slate-400">/100</span></p>
+            <p className="mt-3 text-4xl font-bold">{r.ai?.score}<span className="text-lg text-muted">/100</span></p>
           </div>
-          <p className="mt-3 text-xs text-slate-500 leading-relaxed">{r.ai?.disclaimer}</p>
+          <p className="mt-3 text-xs text-muted leading-relaxed">{r.ai?.disclaimer}</p>
         </Card>
 
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Primary Topic</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted">Primary Topic</p>
           <p className="mt-3 text-lg font-semibold leading-snug">{r.topics?.[0]?.topic || "General ML"}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {(r.keywords || []).slice(0, 8).map((k: string) => (
@@ -150,12 +150,12 @@ export function Results() {
         </Card>
 
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Document Sections</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted">Document Sections</p>
           <div className="mt-3 space-y-1.5">
             {(r.sections || []).slice(0, 6).map((s: any) => (
               <div key={s.name} className="flex items-center justify-between text-sm">
                 <span className="text-slate-600 dark:text-slate-300 truncate max-w-[120px]">{s.name}</span>
-                <span className="text-xs text-slate-400">{(s.chars / 1000).toFixed(1)}k chars</span>
+                <span className="text-xs text-muted">{(s.chars / 1000).toFixed(1)}k chars</span>
               </div>
             ))}
           </div>
@@ -170,19 +170,19 @@ export function Results() {
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">About</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">About</p>
             <p className="text-sm leading-relaxed">{r.summary?.about}</p>
           </div>
           <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Comparison</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Comparison</p>
             <p className="text-sm leading-relaxed">{r.summary?.comparison}</p>
           </div>
           <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Suggested Improvements</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Suggested Improvements</p>
             <ul className="space-y-1.5">
               {(r.summary?.improvements || []).map((s: string, i: number) => (
                 <li key={i} className="flex items-start gap-2 text-sm">
-                  <CheckCircle size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                  <CheckCircle size={14} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   {s}
                 </li>
               ))}
@@ -216,30 +216,30 @@ export function Results() {
                     <Link to={`/app/paper/${p.paperId}`} className="text-sm font-medium hover:text-indigo-500 hover:underline line-clamp-1">
                       {p.title}
                     </Link>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       {(p.authors || []).slice(0, 2).join(", ")}{p.authors?.length > 2 ? " et al." : ""} · {p.year} · {p.venue}
                       {p.isDemo && <span className="ml-1 badge bg-amber-100 text-amber-700">DEMO</span>}
                     </p>
                   </div>
-                  <span className={`shrink-0 text-lg font-bold ${p.score >= 70 ? "text-rose-500" : p.score >= 40 ? "text-amber-500" : "text-emerald-500"}`}>
+                  <span className={`shrink-0 text-lg font-bold ${p.score >= 70 ? "text-rose-500" : p.score >= 40 ? "text-amber-500" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {p.score}%
                   </span>
                 </div>
                 {/* Semantic bar */}
                 <div className="mt-2 space-y-1">
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="flex items-center gap-2 text-xs text-muted">
                     <span className="w-16 shrink-0">Semantic</span>
                     <div className="flex-1"><ScoreBar v={p.score} /></div>
                   </div>
                   {p.lexical && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <div className="flex items-center gap-2 text-xs text-muted">
                       <span className="w-16 shrink-0">Lexical (C)</span>
                       <div className="flex-1"><ScoreBar v={Math.min(100, Math.round(p.lexical.score))} /></div>
-                      <span className="text-xs text-slate-400">{Math.min(100, Math.round(p.lexical.score))}%</span>
+                      <span className="text-xs text-muted">{Math.min(100, Math.round(p.lexical.score))}%</span>
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-xs text-slate-500 italic">{p.whySimilar}</p>
+                <p className="mt-2 text-xs text-muted italic">{p.whySimilar}</p>
                 {p.matchedConcepts?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {p.matchedConcepts.map((c: string) => (
@@ -248,7 +248,7 @@ export function Results() {
                   </div>
                 )}
                 {p.lexical && (
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 text-xs text-muted">
                     Jaccard: {p.lexical.jaccard?.toFixed(2)} · KMP hits: {p.lexical.kmpHits}
                   </p>
                 )}
@@ -278,7 +278,7 @@ export function Results() {
                 {radarData.map((d) => (
                   <div key={d.section} className="flex items-center justify-between rounded-lg bg-slate-50 dark:bg-white/5 px-3 py-1.5 text-sm">
                     <span className="text-slate-600 dark:text-slate-300 text-xs truncate">{d.section}</span>
-                    <span className={`font-semibold text-xs ml-2 ${d.value >= 70 ? "text-rose-500" : d.value >= 40 ? "text-amber-500" : "text-emerald-500"}`}>{d.value}%</span>
+                    <span className={`font-semibold text-xs ml-2 ${d.value >= 70 ? "text-rose-500" : d.value >= 40 ? "text-amber-500" : "text-emerald-600 dark:text-emerald-400"}`}>{d.value}%</span>
                   </div>
                 ))}
               </div>
@@ -294,7 +294,7 @@ export function Results() {
                   <ScoreBar v={d.value} />
                 </div>
               ))}
-              {radarData.length === 0 && <p className="text-sm text-slate-500">No section-level scores available.</p>}
+              {radarData.length === 0 && <p className="text-sm text-muted">No section-level scores available.</p>}
             </div>
           )}
         </Card>
@@ -306,7 +306,7 @@ export function Results() {
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={18} className="text-indigo-500" />
             <h3 className="font-semibold">Similarity Score Comparison</h3>
-            <span className="text-xs text-slate-400">(semantic % per paper)</span>
+            <span className="text-xs text-muted">(semantic % per paper)</span>
           </div>
           <div className="h-48">
             <ResponsiveContainer>
@@ -322,20 +322,20 @@ export function Results() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-2 text-xs text-slate-400 flex items-center gap-1">
-            <Info size={12} /> Colour: <span className="text-emerald-500">green = low</span>, <span className="text-amber-500">amber = moderate</span>, <span className="text-rose-500">red = high</span> relatedness
+          <p className="mt-2 text-xs text-muted flex items-center gap-1">
+            <Info size={12} /> Colour: <span className="text-emerald-600 dark:text-emerald-400">green = low</span>, <span className="text-amber-500">amber = moderate</span>, <span className="text-rose-500">red = high</span> relatedness
           </p>
         </Card>
       )}
 
       {/* ── Passage matches ── */}
       <Collapsible title="Similar Passages" icon={BookOpen} defaultOpen>
-        <p className="mb-3 text-xs text-slate-400 flex items-center gap-1">
+        <p className="mb-3 text-xs text-muted flex items-center gap-1">
           <AlertTriangle size={12} className="text-amber-400" />
           Semantic matches are NOT proof of copying. Only EXACT/NEAR-EXACT warrant closer inspection.
         </p>
         {(r.passageMatches || []).length === 0 ? (
-          <p className="text-sm text-slate-500">No strong passage-level matches found.</p>
+          <p className="text-sm text-muted">No strong passage-level matches found.</p>
         ) : (
           <div className="space-y-3">
             {(r.passageMatches || []).slice(0, 8).map((m: any, i: number) => (
@@ -343,7 +343,7 @@ export function Results() {
                 <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-white/5">
                   <MatchTypeBadge type={m.matchType} />
                   <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{m.similarity}% match</span>
-                  <span className="text-xs text-slate-400">· {m.paperTitle} [{m.section}]</span>
+                  <span className="text-xs text-muted">· {m.paperTitle} [{m.section}]</span>
                 </div>
                 <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/70 dark:divide-white/10">
                   <div className="p-3">
@@ -351,8 +351,8 @@ export function Results() {
                     <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{m.userPassage}</p>
                   </div>
                   <div className="p-3">
-                    <p className="text-xs font-semibold text-slate-400 mb-1">Source: {m.paperTitle}</p>
-                    <p className="text-sm text-slate-500 leading-relaxed">{m.sourcePassage}</p>
+                    <p className="text-xs font-semibold text-muted mb-1">Source: {m.paperTitle}</p>
+                    <p className="text-sm text-muted leading-relaxed">{m.sourcePassage}</p>
                   </div>
                 </div>
               </div>
@@ -365,7 +365,7 @@ export function Results() {
       <Collapsible title={`Research Gaps (${(r.gaps || []).length} identified)`} icon={Target} defaultOpen>
         <div className="space-y-4">
           {(r.gaps || []).length === 0 ? (
-            <p className="text-sm text-slate-500">No specific gaps detected. Your paper appears well-positioned.</p>
+            <p className="text-sm text-muted">No specific gaps detected. Your paper appears well-positioned.</p>
           ) : (
             (r.gaps || []).map((g: any, i: number) => (
               <div key={i} className={`rounded-xl border-l-4 p-4 ${
@@ -392,7 +392,7 @@ export function Results() {
 
                 {g.supportingPapers?.length > 0 && (
                   <div className="mt-2">
-                    <p className="text-xs text-slate-400 mb-1">Supporting papers from knowledge base:</p>
+                    <p className="text-xs text-muted mb-1">Supporting papers from knowledge base:</p>
                     <div className="flex flex-wrap gap-1.5">
                       {g.supportingPapers.map((sp: any) => (
                         <Link
@@ -429,7 +429,7 @@ export function Results() {
           <div className="rounded-xl bg-amber-50/50 dark:bg-amber-500/5 border border-amber-200/60 dark:border-amber-500/20 p-4">
             <p className="text-xs font-semibold text-amber-600 mb-2">⚠ Disclaimer</p>
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{r.ai?.disclaimer}</p>
-            <p className="mt-3 text-xs text-slate-500">
+            <p className="mt-3 text-xs text-muted">
               AI-writing signals use statistical heuristics (burstiness, type-token ratio, trigram repetition). False positives/negatives are possible. This is never proof.
             </p>
           </div>
@@ -440,9 +440,9 @@ export function Results() {
       <Collapsible title="Algorithm Engine Details" icon={Zap}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase text-slate-400 mb-2">Engine Used</p>
+            <p className="text-xs font-semibold uppercase text-muted mb-2">Engine Used</p>
             <p className="text-sm font-medium">{r.cEngine?.used ? "✅ Native C Engine" : "⚙️ JavaScript Fallback"}</p>
-            {r.cEngine?.reason && <p className="text-xs text-slate-500 mt-1">{r.cEngine.reason}</p>}
+            {r.cEngine?.reason && <p className="text-xs text-muted mt-1">{r.cEngine.reason}</p>}
             <div className="mt-3 flex flex-wrap gap-1.5">
               {(r.cEngine?.algorithms || []).map((a: string) => (
                 <span key={a} className="badge bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 text-xs">{a}</span>
@@ -450,7 +450,7 @@ export function Results() {
             </div>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase text-slate-400 mb-2">C Engine Keywords</p>
+            <p className="text-xs font-semibold uppercase text-muted mb-2">C Engine Keywords</p>
             <div className="flex flex-wrap gap-1.5">
               {(r.cEngine?.keywords || []).map((k: string) => (
                 <span key={k} className="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-xs">{k}</span>
@@ -458,7 +458,7 @@ export function Results() {
             </div>
           </div>
         </div>
-        <p className="mt-4 text-xs text-slate-400">
+        <p className="mt-4 text-xs text-muted">
           Lexical (C) and semantic (embeddings) scores are computed independently and reported separately — never conflated.
           See <Link className="underline text-indigo-500" to="/app/algorithms">Algorithm Explorer</Link> for full details.
         </p>
@@ -474,7 +474,7 @@ export function Results() {
               <p className="mt-1 text-xs text-indigo-500 flex items-center gap-1">View paper <ArrowRight size={10} /></p>
             </Link>
           ))}
-          {!(r.summary?.reading || []).length && <p className="text-sm text-slate-500">No recommendations available.</p>}
+          {!(r.summary?.reading || []).length && <p className="text-sm text-muted">No recommendations available.</p>}
         </div>
       </Collapsible>
     </div>

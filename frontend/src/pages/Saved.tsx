@@ -3,8 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useSaved } from "../lib/saved";
-import { Empty } from "../components/Layout";
-import { Bookmark, Trash2 } from "lucide-react";
+import { Card, Empty } from "../components/Layout";
+import { Bookmark, Trash2, Inbox, GitCompare } from "lucide-react";
 
 export function Saved() {
   const saved = useSaved();
@@ -22,46 +22,68 @@ export function Saved() {
   };
 
   if (saved.isLoading) {
-    return <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skel h-32" />)}</div>;
+    return <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skel h-36" />)}</div>;
   }
 
   return (
     <div>
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Saved Papers</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <h1 className="text-2xl font-semibold tracking-tight text-body">Saved papers</h1>
+          <p className="mt-1.5 text-sm text-muted">
             {saved.ids.length > 0
-              ? `${saved.ids.length} bookmarked paper${saved.ids.length !== 1 ? "s" : ""}`
+              ? `${saved.ids.length} bookmarked paper${saved.ids.length !== 1 ? "s" : ""} · stored on your account`
               : "Your saved research papers"}
           </p>
         </div>
-        {saved.ids.length > 0 && (
-          <button
-            onClick={clearAll}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-500 hover:bg-rose-500/10 hover:text-rose-500 transition-colors border border-slate-200 dark:border-white/10"
-          >
-            <Trash2 size={14} /> Clear all
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {saved.ids.length >= 2 && (
+            <Link to={`/app/compare?ids=${saved.ids.join(",")}`} className="btn-secondary btn-sm">
+              <GitCompare size={14} /> Compare
+            </Link>
+          )}
+          {saved.ids.length > 0 && (
+            <button onClick={clearAll} className="btn-danger btn-sm">
+              <Trash2 size={14} /> Clear all
+            </button>
+          )}
+        </div>
       </div>
-      {error && <p className="mb-3 text-sm text-rose-500">{error}</p>}
+
+      {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
+
       {saved.ids.length === 0 ? (
-        <Empty text="No saved papers yet. Browse the Explorer and bookmark papers you like." />
+        <Empty
+          text="No saved papers yet. Browse the Explorer and bookmark the papers you want to keep."
+          action={
+            <Link to="/app/explorer" className="btn-primary">
+              <Inbox size={15} /> Browse the explorer
+            </Link>
+          }
+        />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {saved.papers.map((p: any) => (
-            <Link key={p.id} to={`/app/paper/${p.id}`} className="card p-4 hover:border-indigo-400">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{p.title}</p>
-                  <p className="mt-1 text-xs text-slate-500">{(p.authors || []).join(", ")} · {p.year} · {p.venue}</p>
-                  <p className="mt-2 line-clamp-2 text-sm text-slate-500">{p.abstract}</p>
+            <Link key={p.id} to={`/app/paper/${p.id}`} className="card card-hover group p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-body transition group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
+                    {p.title}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {p.is_demo && <span className="badge badge-amber">DEMO</span>}
+                    {p.year && <span className="badge badge-slate">{p.year}</span>}
+                  </div>
+                  <p className="mt-1.5 truncate text-xs text-muted">
+                    {(p.authors || []).join(", ") || "Unknown authors"}
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">{p.abstract}</p>
                 </div>
                 <button
                   onClick={(e) => { e.preventDefault(); remove.mutate(p.id); }}
-                  className="shrink-0 p-2 rounded-lg bg-amber-500/20 text-amber-600 hover:bg-rose-500/15 hover:text-rose-500 transition-colors ml-2"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/20 text-amber-600 transition hover:bg-rose-500/15 hover:text-rose-500"
                   title="Remove bookmark"
+                  aria-label="Remove bookmark"
                 >
                   <Bookmark size={16} fill="currentColor" />
                 </button>

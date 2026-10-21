@@ -63,7 +63,7 @@ export function SimilarPapers() {
             className={`flex-1 rounded-xl py-2 text-sm font-medium transition-colors ${
               tab === i
                 ? "bg-white dark:bg-white/10 shadow-sm text-indigo-600 dark:text-indigo-300"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+                : "text-muted hover:text-slate-700 dark:hover:text-slate-200"
             }`}
           >
             {t}
@@ -80,12 +80,12 @@ export function SimilarPapers() {
       {tab === 0 && (
         <div>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-slate-500">Sort by:</span>
+            <span className="text-xs text-muted">Sort by:</span>
             {[["similarity", "Similarity"], ["year", "Year"], ["citations", "Citations"]].map(([v, l]) => (
               <button
                 key={v}
                 onClick={() => setSort(v)}
-                className={`btn text-xs border ${sort === v ? "border-indigo-500 bg-indigo-500/10 text-indigo-600" : "border-slate-200 dark:border-white/15 text-slate-500"}`}
+                className={`btn text-xs border ${sort === v ? "border-indigo-500 bg-indigo-500/10 text-indigo-600" : "border-slate-200 dark:border-white/15 text-muted"}`}
               >
                 {l}
               </button>
@@ -108,7 +108,7 @@ export function SimilarPapers() {
                       <Link to={`/app/paper/${p.paperId}`} className="font-semibold hover:text-indigo-500 hover:underline">{p.title}</Link>
                       {p.isDemo && <span className="badge bg-amber-100 text-amber-700">DEMO (synthetic)</span>}
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-muted">
                       {(p.authors || []).slice(0, 3).join(", ")}{p.authors?.length > 3 ? " et al." : ""}
                       {p.year ? ` · ${p.year}` : ""} {p.venue ? `· ${p.venue}` : ""}
                       {p.doi ? ` · DOI: ${p.doi}` : ""}
@@ -117,31 +117,31 @@ export function SimilarPapers() {
                     {/* Score bars */}
                     <div className="mt-3 space-y-1.5">
                       <div className="flex items-center gap-3 text-xs">
-                        <span className="w-24 shrink-0 text-slate-400">Semantic</span>
+                        <span className="w-24 shrink-0 text-muted">Semantic</span>
                         <div className="flex-1"><ScoreBar v={p.score} /></div>
-                        <span className={`w-10 text-right font-bold ${p.score >= 70 ? "text-rose-500" : p.score >= 40 ? "text-amber-500" : "text-emerald-500"}`}>{p.score}%</span>
+                        <span className={`w-10 text-right font-bold ${p.score >= 70 ? "text-rose-500" : p.score >= 40 ? "text-amber-500" : "text-emerald-600 dark:text-emerald-400"}`}>{p.score}%</span>
                       </div>
                       {p.lexical && (
                         <div className="flex items-center gap-3 text-xs">
-                          <span className="w-24 shrink-0 text-slate-400">Lexical (C)</span>
+                          <span className="w-24 shrink-0 text-muted">Lexical (C)</span>
                           <div className="flex-1"><ScoreBar v={Math.min(100, Math.round(p.lexical.score))} /></div>
-                          <span className="w-10 text-right font-semibold text-slate-500">{Math.min(100, Math.round(p.lexical.score))}%</span>
+                          <span className="w-10 text-right font-semibold text-muted">{Math.min(100, Math.round(p.lexical.score))}%</span>
                         </div>
                       )}
                     </div>
 
                     {/* Why similar */}
-                    <p className="mt-2 text-sm text-slate-500 italic">{p.whySimilar}</p>
+                    <p className="mt-2 text-sm text-muted italic">{p.whySimilar}</p>
 
                     {/* Section scores chips */}
                     {Object.keys(p.sectionScores || {}).length > 0 && (
                       <div className="mt-2">
-                        <p className="text-xs text-slate-400 mb-1">Section overlaps:</p>
+                        <p className="text-xs text-muted mb-1">Section overlaps:</p>
                         <div className="flex flex-wrap gap-1.5">
                           {Object.entries(p.sectionScores || {}).map(([k, v]) => (
                             <span key={k} className={`badge text-xs ${
-                              (v as number) >= 70 ? "bg-rose-500/10 text-rose-600" :
-                              (v as number) >= 40 ? "bg-amber-500/10 text-amber-600" :
+                              (v as number) >= 70 ? "bg-rose-500/10 text-rose-700 dark:text-rose-300" :
+                              (v as number) >= 40 ? "bg-amber-500/10 text-amber-800 dark:text-amber-300" :
                               "bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300"
                             }`}>
                               {k}: {v as number}%
@@ -154,7 +154,7 @@ export function SimilarPapers() {
                     {/* Matched concepts */}
                     {p.matchedConcepts?.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
-                        <span className="text-xs text-slate-400">Shared concepts:</span>
+                        <span className="text-xs text-muted">Shared concepts:</span>
                         {p.matchedConcepts.map((c: string) => (
                           <span key={c} className="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-xs">{c}</span>
                         ))}
@@ -163,7 +163,7 @@ export function SimilarPapers() {
 
                     {/* Lexical details */}
                     {p.lexical && (
-                      <p className="mt-2 text-xs text-slate-400 bg-slate-50 dark:bg-white/5 rounded-lg px-2 py-1">
+                      <p className="mt-2 text-xs text-muted bg-slate-50 dark:bg-white/5 rounded-lg px-2 py-1">
                         C engine — Jaccard: {p.lexical.jaccard?.toFixed(3)} · TF-IDF: {p.lexical.tfidf?.toFixed(3)} · KMP hits: {p.lexical.kmpHits}
                       </p>
                     )}
@@ -171,16 +171,16 @@ export function SimilarPapers() {
                     {/* Top passage matches for this paper */}
                     {(p.topMatches || []).length > 0 && (
                       <div className="mt-3 space-y-2">
-                        <p className="text-xs font-medium text-slate-500">Top passage matches:</p>
+                        <p className="text-xs font-medium text-muted">Top passage matches:</p>
                         {p.topMatches.map((m: any, j: number) => (
                           <div key={j} className="rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-white/5">
                               <MatchTypeBadge type={m.matchType} />
-                              <span className="text-xs text-slate-500">{m.similarity}% · {m.section}</span>
+                              <span className="text-xs text-muted">{m.similarity}% · {m.section}</span>
                             </div>
                             <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-white/5">
                               <p className="p-2 text-xs text-slate-600 dark:text-slate-300">"{m.userPassage?.slice(0, 180)}…"</p>
-                              <p className="p-2 text-xs text-slate-400">"{m.sourcePassage?.slice(0, 180)}…"</p>
+                              <p className="p-2 text-xs text-muted">"{m.sourcePassage?.slice(0, 180)}…"</p>
                             </div>
                           </div>
                         ))}
@@ -192,7 +192,7 @@ export function SimilarPapers() {
                         <BookOpen size={12} /> Full paper details
                       </Link>
                       {p.sourceUrl && (
-                        <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="text-xs text-slate-400 hover:text-indigo-500 flex items-center gap-1">
+                        <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="text-xs text-muted hover:text-indigo-500 flex items-center gap-1">
                           <ExternalLink size={12} /> Source
                         </a>
                       )}
@@ -266,14 +266,14 @@ export function SimilarPapers() {
                   <div className="p-5 space-y-4">
                     {/* Description */}
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Gap Description</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Gap Description</p>
                       <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{g.description}</p>
                     </div>
 
                     {/* Future direction — highlighted */}
                     <div className="rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/60 dark:border-emerald-500/20 p-4">
                       <div className="flex items-start gap-2">
-                        <CheckCircle size={16} className="mt-0.5 shrink-0 text-emerald-500" />
+                        <CheckCircle size={16} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">Suggested Future Direction</p>
                           <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{g.futureDirection}</p>
@@ -284,7 +284,7 @@ export function SimilarPapers() {
                     {/* Supporting papers */}
                     {g.supportingPapers?.length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Evidence from Knowledge Base</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Evidence from Knowledge Base</p>
                         <div className="space-y-2">
                           {g.supportingPapers.map((sp: any) => (
                             <Link
@@ -294,7 +294,7 @@ export function SimilarPapers() {
                             >
                               <BookOpen size={13} className="shrink-0 text-indigo-500" />
                               <span className="text-sm flex-1 truncate">{sp.title}</span>
-                              <ArrowRight size={13} className="shrink-0 text-slate-400" />
+                              <ArrowRight size={13} className="shrink-0 text-muted" />
                             </Link>
                           ))}
                         </div>
@@ -336,7 +336,7 @@ export function SimilarPapers() {
         <div>
           <div className="mb-4 rounded-xl border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 flex items-start gap-2">
             <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-400" />
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-muted leading-relaxed">
               These matches compare your text against the knowledge base at the sentence level.
               <b> EXACT/NEAR-EXACT</b> matches warrant review. <b>SEMANTIC/CONCEPTUAL</b> means similar ideas expressed differently — normal in academic writing.
             </p>
@@ -352,7 +352,7 @@ export function SimilarPapers() {
             ].map(([label, cls, desc]) => (
               <div key={label} className="flex items-center gap-2">
                 <span className={`badge border ${cls} text-xs`}>{label}</span>
-                <span className="text-xs text-slate-400">{desc}</span>
+                <span className="text-xs text-muted">{desc}</span>
               </div>
             ))}
           </div>
@@ -365,14 +365,14 @@ export function SimilarPapers() {
                 <div key={i} className="rounded-2xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
                   {/* Match header */}
                   <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-slate-50 dark:bg-white/5 border-b border-slate-200/70 dark:border-white/10">
-                    <span className="text-xs text-slate-400">#{i + 1}</span>
+                    <span className="text-xs text-muted">#{i + 1}</span>
                     <MatchTypeBadge type={m.matchType} />
                     <span className="text-xs font-semibold">{m.similarity}% match</span>
-                    <span className="text-xs text-slate-400">·</span>
+                    <span className="text-xs text-muted">·</span>
                     <Link to={`/app/paper/${m.paperId}`} className="text-xs text-indigo-500 hover:underline">
                       {m.paperTitle}
                     </Link>
-                    <span className="text-xs text-slate-400">[{m.section}]</span>
+                    <span className="text-xs text-muted">[{m.section}]</span>
                   </div>
                   {/* Passage comparison */}
                   <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/70 dark:divide-white/10">
@@ -383,16 +383,16 @@ export function SimilarPapers() {
                       <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{m.userPassage}</p>
                     </div>
                     <div className="p-4">
-                      <p className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1">
+                      <p className="text-xs font-semibold text-muted mb-2 flex items-center gap-1">
                         <BookOpen size={11} /> Source: {m.paperTitle}
                       </p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{m.sourcePassage}</p>
+                      <p className="text-sm text-muted dark:text-muted leading-relaxed">{m.sourcePassage}</p>
                     </div>
                   </div>
                 </div>
               ))}
               {passages.length > 15 && (
-                <p className="text-center text-xs text-slate-400">Showing 15 of {passages.length} matches</p>
+                <p className="text-center text-xs text-muted">Showing 15 of {passages.length} matches</p>
               )}
             </div>
           )}
