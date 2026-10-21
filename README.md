@@ -109,7 +109,27 @@ npm test          # all suites: C++ engine + backend + frontend
 npm run test:c    # C++ engine only
 make -C algorithm_engine asan   # C sanitizer build
 npm run build:frontend           # production frontend
+npm run verify:deploy <url>      # smoke-test a deployed instance (headers, pipeline, build freshness)
 ```
+
+`verify:deploy` exists because a failed build leaves the *previous* release
+serving happily — the link still works, it is just the old code. The script
+probes for an endpoint that only exists in the current build, so a stale
+deployment is caught immediately instead of at the demo.
+
+## Deploy
+
+One-click Render blueprint (`render.yaml`): pushes to `main` auto-redeploy in ~3 min, same URL kept.
+
+> **Build note.** The service runs with `NODE_ENV=production`, and npm omits
+> devDependencies whenever that is set — which would leave `tsx` (the runner
+> behind migrate/seed) and `vite` (the bundler) uninstalled, failing the build
+> with `tsx: not found`. The install steps therefore pass `--include=dev`,
+> which restores the build tooling while the runtime still executes
+> production-only code.
+
+After deploying, run `npm run verify:deploy https://researchlens-cqn6.onrender.com`
+to confirm the new build is live.
 
 ## Environment
 
