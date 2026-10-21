@@ -9,6 +9,7 @@ import { Trash2 } from "lucide-react";
 export function Dashboard() {
   const dash = useQuery({ queryKey: ["dash"], queryFn: api.dashboard });
   const trends = useQuery({ queryKey: ["trends"], queryFn: api.trends });
+  const kb = useQuery<any>({ queryKey: ["kb-stats"], queryFn: api.kb });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -80,6 +81,39 @@ export function Dashboard() {
           <Link to="/app/upload" className="btn-primary mt-4">New analysis</Link>
         </Card>
       </div>
+
+      {kb.data && (
+        <Card className="mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Knowledge base</h3>
+            <span className="badge bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300">
+              {(kb.data as any).embeddingProvider} · {(kb.data as any).embeddingDimension}-d embeddings
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {([
+              ["Indexed chunks", (kb.data as any).chunks],
+              ["Real papers", (kb.data as any).realPapers],
+              ["Demo papers", (kb.data as any).demoPapers],
+              ["Citation edges", (kb.data as any).citations],
+              ["Avg chunks/paper", (kb.data as any).avgChunksPerPaper],
+              ["C engine", (kb.data as any).cEngine ? "available" : "fallback"],
+            ] as [string, any][]).map(([k, v]) => (
+              <div key={k} className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
+                <p className="text-xs text-slate-500">{k}</p>
+                <p className="mt-1 text-lg font-semibold">{String(v)}</p>
+              </div>
+            ))}
+          </div>
+          {(kb.data as any).topTopics?.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {(kb.data as any).topTopics.map((t: any) => (
+                <span key={t.topic} className="badge bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">{t.topic} · {t.count}</span>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

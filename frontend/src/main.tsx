@@ -17,6 +17,9 @@ import { Chat } from "./pages/ChatReview";
 import { Trends } from "./pages/Analytics";
 import { Algorithms, Settings } from "./pages/AlgorithmsSettings";
 import { Auth } from "./pages/Auth";
+import { GraphLab } from "./pages/GraphLab";
+import { Compare } from "./pages/Compare";
+import { Review } from "./pages/Review";
 
 // Error boundary to prevent one crash from taking down the whole app
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -70,6 +73,9 @@ createRoot(document.getElementById("root")!).render(
               <Route path="paper/:id" element={<PaperDetails />} />
               <Route path="chat" element={<Chat />} />
               <Route path="trends" element={<Trends />} />
+              <Route path="graph" element={<GraphLab />} />
+              <Route path="compare" element={<Compare />} />
+              <Route path="review" element={<Review />} />
               <Route path="saved" element={<Saved />} />
               <Route path="algorithms" element={<Algorithms />} />
               <Route path="settings" element={<Settings />} />

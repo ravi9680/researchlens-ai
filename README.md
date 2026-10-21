@@ -3,8 +3,8 @@
 > Upload a paper → get similar papers, passage matches, AI-writing signals, research gaps, literature review & grounded answers. **Similarity ≠ plagiarism. Signals ≠ proof.**
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://researchlens-cqn6.onrender.com)
-[![C Tests](https://img.shields.io/badge/C_tests-28_passed-blue)](algorithm_engine/tests/test_all.c)
-[![Backend Tests](https://img.shields.io/badge/backend_tests-7_passed-blue)](backend/src/tests.test.ts)
+[![C Tests](https://img.shields.io/badge/C_tests-33_passed-blue)](algorithm_engine/tests/test_all.cpp)
+[![Backend Tests](https://img.shields.io/badge/backend_tests-22_passed-blue)](backend/src/api.test.ts)
 [![License: Demo](https://img.shields.io/badge/data-demo_labelled-amber)](docs/DATABASE.md)
 
 **🌐 Live:** https://researchlens-cqn6.onrender.com &nbsp;·&nbsp; **First load takes ~1 min** (free tier wakes from sleep)
@@ -24,6 +24,7 @@ A student uploads a research paper (**PDF / DOCX / TXT**). The platform analyses
 | 📚 Literature review | Theme-wise outline citing only retrieved papers |
 | 💬 Research chat | RAG answers with evidence — abstains when unsure |
 | 📈 Trends & citation graph | Year/topic charts, BFS·PageRank-powered interactive graph |
+| 🔬 Compare & ingest | Pairwise paper comparison (semantic + lexical), live OpenAlex ingestion |
 
 ## Screenshots
 
@@ -47,7 +48,7 @@ UPLOAD → PARSE → CHUNK → EMBED → C_ENGINE → SEMANTIC_SEARCH → SIMILA
 
 - **C engine** (`algorithm_engine/`) — KMP, Rabin-Karp, edit distance, LCS, TF-IDF + inverted index, Jaccard/cosine/trigram, hash table, Trie, heap top-K, BST, graph (BFS/DFS/components/PageRank). JSON stdin/stdout bridge, `make test` + `make asan`.
 - **Backend** (`backend/`, Node + TypeScript + Express) — pipeline orchestration, IDF-weighted 384-d embeddings (OpenAI swappable), SQLite dev store, Postgres + pgvector schema for production.
-- **Frontend** (`frontend/`, React + TS + Vite + Tailwind) — 18 routes, dark mode, mobile-ready.
+- **Frontend** (`frontend/`, React + TS + Vite + Tailwind) — 21 routes, dark mode, mobile-ready.
 
 Lexical (C) and semantic (embeddings) scores are **reported separately, never conflated**.
 
