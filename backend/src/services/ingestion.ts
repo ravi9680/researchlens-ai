@@ -92,10 +92,14 @@ export async function ingestDomain(domain: string, targetCount: number, jobId: s
     ["done", 100, JSON.stringify(log), jobId]);
 }
 
-export function startIngestJob(domain: string, targetCount: number): string {
+/** OpenAlex returns at most 50 works per page, so a larger target never
+ *  fetches more — capping here keeps the stored target honest. */
+export const MAX_INGEST_COUNT = 50;
+
+export function startIngestJob(domain: string, targetCount: number, userId?: string | null): string {
   const id = randomUUID();
-  run("INSERT INTO ingestion_jobs (id, domain, target_count, status, progress) VALUES (?,?,?,?,?)",
-    [id, domain, targetCount, "running", 0]);
+  run("INSERT INTO ingestion_jobs (id, user_id, domain, target_count, status, progress) VALUES (?,?,?,?,?,?)",
+    [id, userId || null, domain, targetCount, "running", 0]);
   ingestDomain(domain, targetCount, id).catch((e) => {
     run("UPDATE ingestion_jobs SET status = ?, log_json = ? WHERE id = ?", ["failed", JSON.stringify([String(e)]), id]);
   });

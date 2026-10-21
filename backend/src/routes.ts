@@ -12,7 +12,7 @@ import { runAnalysis, getReport } from "./services/pipeline.js";
 import { cosine, jaccard } from "./services/textUtils.js";
 import { detectTopics, extractKeywords } from "./services/documentParser.js";
 import { cEngineInfo, cGraph, cEngineAvailable } from "./services/cEngine.js";
-import { startIngestJob } from "./services/ingestion.js";
+import { startIngestJob, MAX_INGEST_COUNT } from "./services/ingestion.js";
 import { literatureReviewOutline } from "./services/gaps.js";
 import { semanticSearch } from "./services/similarity.js";
 import { embedSync, provider, DIM } from "./services/embedding.js";
@@ -52,8 +52,46 @@ function ownDoc(req: any, id: string) {
   return d;
 }
 
+/** Move everything a guest produced into their real account.
+ *  The frontend sends the guest token alongside login/register so a visitor who
+ *  worked as a guest keeps their analyses and bookmarks after signing up.
+ *  Only genuine guest accounts are merged — a token belonging to an existing
+ *  real account must never be able to claim another account's documents. */
+function mergeGuestInto(guestToken: string | undefined, targetUserId: string): void {
+  if (!guestToken || !targetUserId) return;
+  let guestId = "";
+  try {
+    const payload: any = jwt.verify(guestToken, config.jwtSecret);
+    guestId = String(payload?.id || "");
+  } catch { return; }
+  if (!guestId || guestId === targetUserId) return;
+
+  const guest = get<any>("SELECT id, email, password_hash FROM users WHERE id = ?", [guestId]);
+  if (!guest) return;
+  // Only genuine guest accounts may be merged. Two independent signals:
+  // the reserved email pattern, and the fact that guest accounts were created
+  // with an unguessable random password rather than a bcrypt hash — a real
+  // account always has one. Either signal failing means "not a guest".
+  if (!/^guest_[0-9a-f]+@guest\.researchlens\.local$/i.test(guest.email || "")) return;
+  if (String(guest.password_hash || "").startsWith("$2")) return;
+
+  // saved_papers has UNIQUE(user_id, paper_id): drop rows the target already
+  // has, then move the rest.
+  run("DELETE FROM saved_papers WHERE user_id = ? AND paper_id IN (SELECT paper_id FROM saved_papers WHERE user_id = ?)", [targetUserId, guestId]);
+  run("UPDATE saved_papers SET user_id = ? WHERE user_id = ?", [targetUserId, guestId]);
+  run("UPDATE documents SET user_id = ? WHERE user_id = ?", [targetUserId, guestId]);
+  run("UPDATE ingestion_jobs SET user_id = ? WHERE user_id = ?", [targetUserId, guestId]);
+  run("DELETE FROM users WHERE id = ?", [guestId]);
+  console.log(`[auth] merged guest ${guestId} into ${targetUserId}`);
+}
+
 router.post("/auth/register", async (req, res) => {
-  const s = z.object({ email: z.string().email(), password: z.string().min(6), name: z.string().default("") }).safeParse(req.body);
+  const s = z.object({
+    email: z.string().email(),
+    password: z.string().min(6),
+    name: z.string().default(""),
+    guestToken: z.string().optional(),
+  }).safeParse(req.body);
   if (!s.success) return res.status(400).json({ error: "Invalid input" });
   if (get("SELECT id FROM users WHERE email = ?", [s.data.email])) return res.status(409).json({ error: "Email exists" });
   const id = randomUUID();
@@ -61,13 +99,15 @@ router.post("/auth/register", async (req, res) => {
   const role = existingCount === 0 ? "admin" : "user";
   run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)", [id, s.data.email, await bcrypt.hash(s.data.password, 10), s.data.name, role]);
   const u = get<any>("SELECT * FROM users WHERE id = ?", [id]);
+  mergeGuestInto(s.data.guestToken, id);
   res.json({ token: sign(u), user: { id, email: u.email, name: u.name, role: u.role } });
 });
 
 router.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password, guestToken } = req.body || {};
   const u = get<any>("SELECT * FROM users WHERE email = ?", [email || ""]);
   if (!u || !(await bcrypt.compare(String(password || ""), u.password_hash))) return res.status(401).json({ error: "Invalid credentials" });
+  mergeGuestInto(typeof guestToken === "string" ? guestToken : undefined, u.id);
   res.json({ token: sign(u), user: { id: u.id, email: u.email, name: u.name, role: u.role } });
 });
 
@@ -92,7 +132,11 @@ router.post("/auth/guest", (_req, res) => {
 
 router.get("/auth/me", auth, (req: any, res) => {
   const u = get<any>("SELECT id, email, name, role FROM users WHERE id = ?", [(req as any).user.id]);
-  if (!u) return res.status(404).json({ error: "Not found" });
+  // The token may still be valid while the account behind it is gone (a guest
+  // account is consumed when its work is merged into a real one). That is an
+  // authentication failure, not a missing resource — 401 lets the client mint
+  // a fresh guest and recover instead of hard-failing.
+  if (!u) return res.status(401).json({ error: "Account no longer exists" });
   res.json({ ...u });
 });
 
@@ -149,15 +193,35 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
   } catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
-router.get("/documents", auth, (_req, res) => {
-  res.json(all("SELECT id, filename, title, status, stage, progress, created_at FROM documents ORDER BY created_at DESC LIMIT 50"));
+/* Document visibility rule, shared by every route that touches a document:
+ *   - admins see everything
+ *   - owners see their own
+ *   - legacy rows with NULL user_id predate ownership tracking and stay visible
+ *     to any signed-in user (same semantics as ownDoc)
+ * Without this, any authenticated user could read another user's analyses. */
+function docVisibleTo(req: any, d: any): boolean {
+  if (!d) return false;
+  const u = (req as any).user || {};
+  if (u.role === "admin") return true;
+  if (!d.user_id) return true;
+  return d.user_id === u.id;
+}
+
+router.get("/documents", auth, (req: any, res) => {
+  const u = req.user || {};
+  const rows = u.role === "admin"
+    ? all("SELECT id, filename, title, status, stage, progress, created_at FROM documents ORDER BY created_at DESC LIMIT 50")
+    : all("SELECT id, filename, title, status, stage, progress, created_at FROM documents WHERE user_id IS NULL OR user_id = ? ORDER BY created_at DESC LIMIT 50", [u.id]);
+  res.json(rows);
 });
 router.get("/documents/:id/status", auth, (req, res) => {
-  const d = get<any>("SELECT id, status, stage, progress, error, title FROM documents WHERE id = ?", [req.params.id]);
-  if (!d) return res.status(404).json({ error: "Not found" });
-  res.json({ ...d, done: d.stage === "DONE", failed: d.stage === "FAILED" });
+  const d = get<any>("SELECT id, user_id, status, stage, progress, error, title FROM documents WHERE id = ?", [req.params.id]);
+  if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
+  res.json({ ...d, user_id: undefined, done: d.stage === "DONE", failed: d.stage === "FAILED" });
 });
 router.get("/documents/:id/report", auth, (req, res) => {
+  const d = get<any>("SELECT id, user_id, stage, progress FROM documents WHERE id = ?", [req.params.id]);
+  if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
   const r = getReport(req.params.id);
   if (!r) return res.status(404).json({ error: "Not found" });
   if (r.stage !== "DONE") return res.status(409).json({ error: "Analysis not complete", stage: r.stage, progress: r.progress });
@@ -177,9 +241,14 @@ router.delete("/documents/:id", auth, (req, res) => {
 function authorsOf(pid: string) {
   return all<any>("SELECT a.name FROM paper_authors pa JOIN authors a ON a.id = pa.author_id WHERE pa.paper_id = ? ORDER BY pa.position", [pid]).map((r: any) => r.name);
 }
+/* Papers are shared knowledge-base data, so these routes are public — but the
+ * full text is never returned. It is 5x the payload size and the UI never
+ * uses it; the indexed chunks are what retrieval reads. */
+const PAPER_FIELDS = "id, doi, title, abstract, year, venue, source_url, open_access_url, citation_count, is_demo, created_at";
+
 router.get("/papers", (req, res) => {
   const { search = "", topic = "", sort = "relevance", page = "1", limit = "12" } = req.query as any;
-  let rows = all<any>("SELECT * FROM papers");
+  let rows = all<any>(`SELECT ${PAPER_FIELDS} FROM papers`);
   if (search) {
     const q = String(search).toLowerCase();
     rows = rows.filter((p: any) => ((p.title || "") + " " + (p.abstract || "")).toLowerCase().includes(q));
@@ -200,12 +269,12 @@ router.get("/papers", (req, res) => {
    the ":id" parameter and answer 404. */
 router.get("/papers/saved", auth, (req, res) => {
   const userId = (req as any).user.id;
-  const rows = all<any>("SELECT p.* FROM papers p JOIN saved_papers sp ON sp.paper_id = p.id WHERE sp.user_id = ? ORDER BY sp.saved_at DESC", [userId]);
+  const rows = all<any>(`SELECT p.${PAPER_FIELDS.split(", ").join(", p.")} FROM papers p JOIN saved_papers sp ON sp.paper_id = p.id WHERE sp.user_id = ? ORDER BY sp.saved_at DESC`, [userId]);
   res.json(rows.map((p: any) => ({ ...p, authors: authorsOf(p.id), is_demo: Boolean(p.is_demo) })));
 });
 
 router.get("/papers/:id", (req, res) => {
-  const p = get<any>("SELECT * FROM papers WHERE id = ?", [req.params.id]);
+  const p = get<any>(`SELECT ${PAPER_FIELDS} FROM papers WHERE id = ?`, [req.params.id]);
   if (!p) return res.status(404).json({ error: "Not found" });
   const chunks = all<any>("SELECT section, substr(content,1,600) AS excerpt FROM paper_chunks WHERE paper_id = ? LIMIT 6", [p.id]);
   res.json({ ...p, authors: authorsOf(p.id), chunks, is_demo: Boolean(p.is_demo) });
@@ -315,9 +384,14 @@ router.get("/trends", (_req, res) => {
 });
 
 /* ---------- dashboard ---------- */
-router.get("/dashboard/stats", auth, (_req, res) => {
-  const papers = all<any>("SELECT * FROM papers");
-  const docs = all<any>("SELECT * FROM documents");
+router.get("/dashboard/stats", auth, (req: any, res) => {
+  const u = req.user || {};
+  const papers = all<any>("SELECT id FROM papers");
+  // Only the caller's own analyses — the dashboard must not leak other users'
+  // documents or their titles.
+  const docs = u.role === "admin"
+    ? all<any>("SELECT id, title, filename, stage, progress, created_at FROM documents ORDER BY created_at DESC")
+    : all<any>("SELECT id, title, filename, stage, progress, created_at FROM documents WHERE user_id IS NULL OR user_id = ? ORDER BY created_at DESC", [u.id]);
   const sims = all<any>("SELECT score FROM similarity_results");
   res.json({
     totalPapers: papers.length, totalAuthors: get<any>("SELECT COUNT(*) AS c FROM authors")?.c || 0,
@@ -445,14 +519,28 @@ router.post("/ingest/start", auth, (req, res) => {
   const { domain = "", count = 20 } = req.body || {};
   const d = String(domain).trim();
   if (d.length < 2) return res.status(400).json({ error: "A research domain is required" });
-  const target = Math.min(100, Math.max(1, Number(count) || 20));
-  const jobId = startIngestJob(d, target);
+  const target = Math.min(MAX_INGEST_COUNT, Math.max(1, Number(count) || 20));
+  const userId = (req as any).user.id;
+
+  // Guard against abuse: ingestion hits a third-party API, so one user must not
+  // be able to flood it (or fill the knowledge base) with parallel jobs.
+  const mine = get<any>("SELECT COUNT(*) AS c FROM ingestion_jobs WHERE user_id = ? AND status = 'running'", [userId]);
+  if ((mine?.c || 0) > 0) return res.status(429).json({ error: "You already have an ingestion running. Wait for it to finish." });
+  const globalRunning = get<any>("SELECT COUNT(*) AS c FROM ingestion_jobs WHERE status = 'running'");
+  if ((globalRunning?.c || 0) >= 3) return res.status(429).json({ error: "The server is busy ingesting. Try again shortly." });
+
+  const jobId = startIngestJob(d, target, userId);
   res.json({ jobId, id: jobId, status: "running", domain: d, targetCount: target });
 });
 
 router.get("/ingest/:id", auth, (req, res) => {
   const j = get<any>("SELECT * FROM ingestion_jobs WHERE id = ?", [req.params.id]);
   if (!j) return res.status(404).json({ error: "Not found" });
+  const u = (req as any).user || {};
+  // A job belongs to the user who started it (admins can see any).
+  if (j.user_id && j.user_id !== u.id && u.role !== "admin") {
+    return res.status(404).json({ error: "Not found" });
+  }
   let log: any[] = [];
   try { log = JSON.parse(j.log_json || "[]"); } catch { log = []; }
   res.json({ ...j, log });
