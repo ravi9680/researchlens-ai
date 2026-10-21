@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { Card, PageTitle, Empty } from "../components/Layout";
@@ -8,27 +8,22 @@ import { Bookmark, Bookmark as BookmarkFill } from "lucide-react";
 export function Explorer() {
   const [s, setS] = useState({ search: "", topic: "", sort: "relevance" });
   const q = useQuery({ queryKey: ["papers", s], queryFn: () => api.papers({ ...s, limit: "12" }) });
-  const qc = useQueryClient();
-  const saveMut = useMutation({
-    mutationFn: (id: string) => api.savePaper(id),
-    onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: ["papers", s] });
-      const prev = qc.getQueryData(["papers", s]) as any;
-      qc.setQueryData(["papers", s], (old: any) => ({
-        ...old,
-        items: (old.items || []).map((p: any) =>
-          p.id === id ? { ...p, isSaved: !(p.isSaved || false) } : p
-        ),
-      }));
-      return { prev };
-    },
-    onError: (_err, vars: any, ctx: any) => {
-      qc.setQueryData(["papers", s], ctx.prev);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["papers", s] });
-    },
-  });
+
+  // Get saved IDs from localStorage
+  const savedIds = JSON.parse(localStorage.getItem("researchlens_saved") || "[]");
+
+  const isSaved = (id: string) => savedIds.includes(id);
+
+  const toggleSave = (id: string) => {
+    const current = JSON.parse(localStorage.getItem("researchlens_saved") || "[]");
+    if (current.includes(id)) {
+      localStorage.setItem("researchlens_saved", JSON.stringify(current.filter((x: string) => x !== id)));
+    } else {
+      localStorage.setItem("researchlens_saved", JSON.stringify([...current, id]));
+    }
+    // Trigger re-render by updating a dummy state
+    setS({ ...s });
+  };
 
   return (
     <div>
@@ -62,10 +57,10 @@ export function Explorer() {
                 <p className="mt-2 line-clamp-3 text-sm text-slate-500">{p.abstract}</p>
               </div>
               <button
-                onClick={(e) => { e.preventDefault(); saveMut.mutate(p.id); }}
-                className={`p-2 rounded-lg transition-colors ${p.isSaved ? "bg-amber-500/20 text-amber-600" : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"}`}
+                onClick={(e) => { e.preventDefault(); toggleSave(p.id); }}
+                className={`p-2 rounded-lg transition-colors ${isSaved(p.id) ? "bg-amber-500/20 text-amber-600" : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"}`}
               >
-                {p.isSaved ? <BookmarkFill size={18} fill="currentColor" /> : <Bookmark size={18} />}
+                {isSaved(p.id) ? <BookmarkFill size={18} fill="currentColor" /> : <Bookmark size={18} />}
               </button>
             </div>
           </Link>
@@ -79,15 +74,24 @@ export function Explorer() {
 
 export function PaperDetails() {
   const { id = "" } = useParams();
-  const [isSaved, setIsSaved] = useState(false);
-  const q = useQuery({ queryKey: ["paper", id], queryFn: () => api.paper(id) });
-  const saveMut = useMutation({
-    mutationFn: () => api.savePaper(id),
-    onMutate: () => { setIsSaved(!isSaved); },
-    onError: () => { setIsSaved(!isSaved); },
-    onSettled: () => { qc.invalidateQueries({ queryKey: ["paper", id] }); },
+  const [isSaved, setIsSaved] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem("researchlens_saved") || "[]");
+    return saved.includes(id);
   });
-  const qc = useQueryClient();
+
+  const q = useQuery({ queryKey: ["paper", id], queryFn: () => api.paper(id) });
+
+  const toggleSave = () => {
+    const current = JSON.parse(localStorage.getItem("researchlens_saved") || "[]");
+    if (current.includes(id)) {
+      localStorage.setItem("researchlens_saved", JSON.stringify(current.filter((x: string) => x !== id)));
+      setIsSaved(false);
+    } else {
+      localStorage.setItem("researchlens_saved", JSON.stringify([...current, id]));
+      setIsSaved(true);
+    }
+  };
+
   if (q.isLoading) return <div className="skel h-64" />;
   if (q.isError) return <Empty text="Paper not found." />;
   const p: any = q.data;
@@ -96,7 +100,7 @@ export function PaperDetails() {
       <div className="flex items-center justify-between mb-4">
         <PageTitle title={p.title} sub={`${(p.authors || []).join(", ")} · ${p.year} · ${p.venue}`} />
         <button
-          onClick={() => saveMut.mutate()}
+          onClick={toggleSave}
           className={`p-2 rounded-lg transition-colors ${isSaved ? "bg-amber-500/20 text-amber-600" : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"}`}
         >
           {isSaved ? <BookmarkFill size={18} fill="currentColor" /> : <Bookmark size={18} />}
