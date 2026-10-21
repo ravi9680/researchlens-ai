@@ -1,6 +1,35 @@
 import fs from "node:fs";
 import { normalizeWhitespace } from "./textUtils.js";
 
+/** How prose-like a text is, 0..1.
+ *  A non-PDF file renamed to .pdf (or an image-only PDF) can be long enough to
+ *  pass a plain length check while carrying no readable content at all — the
+ *  old fallback scrape happily returned binary noise, which then produced a
+ *  confident, meaningless analysis.
+ *
+ *  Two independent signals, both of which real prose satisfies strongly:
+ *    wordRatio      — share of letters that sit inside word-like runs.
+ *                     Prose ≈ 1.0, binary noise ≈ 0.7.
+ *    spaceDensity   — whitespace share. Prose ≈ 0.12, binary noise ≈ 0.03.
+ *  Returns the weaker of the two, normalised so prose scores ≈ 1. */
+export function textReadability(text: string): number {
+  const t = (text || "").trim();
+  if (!t.length) return 0;
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  if (!letters) return 0;
+  const wordChars = (t.match(/[\p{L}]{2,}/gu) || []).join("").length;
+  const spaces = (t.match(/\s/gu) || []).length;
+  const wordRatio = wordChars / letters;
+  const spaceDensity = spaces / t.length;
+  return Math.min(wordRatio / 0.95, spaceDensity / 0.08);
+}
+
+/** Below this score the text is treated as binary rather than prose. */
+export const MIN_READABILITY = 0.6;
+
+/** Short inputs are not judged — a two-line note is legitimately sparse. */
+export const READABILITY_MIN_LENGTH = 200;
+
 export async function extractText(filePath: string, mime: string, originalName: string): Promise<string> {
   const lower = originalName.toLowerCase();
   if (lower.endsWith(".txt") || mime.includes("text")) {

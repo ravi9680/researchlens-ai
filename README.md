@@ -4,7 +4,7 @@
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://researchlens-cqn6.onrender.com)
 [![C Tests](https://img.shields.io/badge/C_tests-33_passed-blue)](algorithm_engine/tests/test_all.cpp)
-[![Backend Tests](https://img.shields.io/badge/backend_tests-22_passed-blue)](backend/src/api.test.ts)
+[![Backend Tests](https://img.shields.io/badge/backend_tests-35_passed-blue)](backend/src/api.test.ts)
 [![Frontend Tests](https://img.shields.io/badge/frontend_tests-16_passed-blue)](frontend/src/pages.smoke.test.tsx)
 [![License: Demo](https://img.shields.io/badge/data-demo_labelled-amber)](docs/DATABASE.md)
 

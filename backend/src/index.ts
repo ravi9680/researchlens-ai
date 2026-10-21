@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { router } from "./routes.js";
+import { apiErrorHandler } from "./middleware.js";
 
 const app = express();
 // Add security-related HTTP headers.
@@ -32,11 +33,7 @@ if (fs.existsSync(path.join(distDir, "index.html"))) {
 }
 
 // global error handler (safe messages, no stack leaks)
-app.use((err: any, _req: any, res: any, _next: any) => {
-  if (String(err?.message || "").includes("Only PDF")) return res.status(400).json({ error: err.message });
-  console.error("[api]", err?.message || err);
-  res.status(500).json({ error: "Internal error" });
-});
+app.use(apiErrorHandler);
 
 if (!fs.existsSync(new URL("./migrate.ts", import.meta.url))) { /* noop */ }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import express from "express";
 import cors from "cors";
 import { router } from "./routes.js";
+import { apiErrorHandler } from "./middleware.js";
 import { all, run } from "./db.js";
 
 /* API-level tests over the real router.
@@ -19,6 +20,7 @@ beforeAll(async () => {
   app.use(cors());
   app.use(express.json());
   app.use("/api", router);
+  app.use(apiErrorHandler);
   await new Promise<void>((resolve) => { server = app.listen(0, "127.0.0.1", () => resolve()); });
   const addr = server.address();
   base = `http://127.0.0.1:${addr.port}/api`;
@@ -282,6 +284,33 @@ describe("ingestion guards", () => {
     await cleanupUser(b.id);
     removePapersNotInSnapshot();
   }, 60000);
+});
+
+describe("upload validation", () => {
+  it("rejects a file over the size limit with 400, not 500", async () => {
+    const fd = new FormData();
+    // 26 MB of text — over the 25 MB limit.
+    fd.append("file", new Blob(["a".repeat(26 * 1024 * 1024)], { type: "text/plain" }), "big.txt");
+    const r = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+    expect(r.status).toBe(400);
+    const b = await r.json() as any;
+    expect(String(b.error || "")).toMatch(/too large|25 MB/i);
+  });
+
+  it("rejects a disallowed file type with 400", async () => {
+    const fd = new FormData();
+    fd.append("file", new Blob(["<html></html>"], { type: "text/html" }), "page.html");
+    const r = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+    expect(r.status).toBe(400);
+    expect(String(((await r.json() as any).error) || "")).toMatch(/pdf|docx|txt/i);
+  });
+
+  it("requires authentication to upload", async () => {
+    const fd = new FormData();
+    fd.append("file", new Blob(["hello"], { type: "text/plain" }), "a.txt");
+    const r = await fetch(`${base}/upload`, { method: "POST", body: fd });
+    expect(r.status).toBe(401);
+  });
 });
 
 describe("grounded chat", () => {

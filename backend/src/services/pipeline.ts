@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { get, run, all } from "../db.js";
-import { extractText, detectSections, extractTitle, extractKeywords, detectTopics } from "./documentParser.js";
+import { extractText, detectSections, extractTitle, extractKeywords, detectTopics, textReadability, MIN_READABILITY, READABILITY_MIN_LENGTH } from "./documentParser.js";
 import { chunkText } from "./textUtils.js";
 import { embedSync } from "./embedding.js";
 import { analyzeDocument } from "./similarity.js";
@@ -29,6 +29,12 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
     setStage(documentId, "PARSING");
     const fullText = await extractText(filePath, mime, filename);
     if (fullText.length < 50) throw new Error("No readable text extracted. Try a text-based PDF/DOCX/TXT.");
+    // Length alone is not enough: binary noise can be long. Refuse to analyse
+    // something that is not actually prose — a confident report on garbage is
+    // worse than an honest failure.
+    if (fullText.length >= READABILITY_MIN_LENGTH && textReadability(fullText) < MIN_READABILITY) {
+      throw new Error("This file does not contain readable text (it looks like binary data or an image-only PDF). Try a text-based PDF/DOCX/TXT.");
+    }
     const title = extractTitle(fullText, filename);
     run("UPDATE documents SET title = ?, full_text = ? WHERE id = ?", [title, fullText.slice(0, 300000), documentId]);
 
