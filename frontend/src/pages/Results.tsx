@@ -202,6 +202,31 @@ export function Results() {
       </div>
 
       {/* ── About this paper ── */}
+      {/* If any stage was skipped (e.g. the C engine timed out on a very
+          large document) the report says so. A degraded analysis is fine —
+          an undisclosed one is not. */}
+      {(r.warnings || []).length > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-300/70 bg-amber-50/60 p-4 dark:border-amber-500/30 dark:bg-amber-500/[0.08]">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Part of this analysis was skipped
+              </p>
+              <ul className="mt-1.5 space-y-1 text-xs text-amber-900/90 dark:text-amber-200/90">
+                {r.warnings.map((w: string, i: number) => (
+                  <li key={i} className="leading-relaxed">{w}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                Every other result on this page was still computed. Retry the analysis if the
+                missing part matters to you.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card className="mt-4">
         <div className="flex items-center gap-2 mb-3">
           <FileText size={18} className="text-indigo-500" />
