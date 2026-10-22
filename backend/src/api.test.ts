@@ -633,3 +633,72 @@ describe("citation neighbourhood", () => {
     expect(Array.isArray(d.citedBy)).toBe(true);
   });
 });
+
+describe("stalled analysis", () => {
+  it("reports elapsed time and marks a stale stage instead of spinning forever", async () => {
+    const u = await makeUser("stale");
+    const fd = new FormData();
+    fd.append("file", new Blob(["Phishing detection with gradient boosting on URL length features."], { type: "text/plain" }), "s.txt");
+    const up = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${u.token}` }, body: fd });
+    const docId = (await up.json() as any).documentId;
+
+    const res = await authedAs(u.token, `/documents/${docId}/status`);
+    expect(res.status).toBe(200);
+    const d = await res.json() as any;
+    // The status endpoint always tells the client how long the current stage
+    // has been running and whether it has gone stale — the UI relies on this
+    // to offer a retry instead of an endless progress bar.
+    expect(typeof d.elapsedMs).toBe("number");
+    expect(d.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(typeof d.stale).toBe("boolean");
+    expect(typeof d.canRetry).toBe("boolean");
+    await cleanupUser(u.id);
+  });
+
+  it("flags a stage that stopped advancing as stale and retryable", async () => {
+    const u = await makeUser("staler");
+    const fd = new FormData();
+    fd.append("file", new Blob(["Anomaly detection with LSTM baselines on network traffic."], { type: "text/plain" }), "s2.txt");
+    const up = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${u.token}` }, body: fd });
+    const docId = (await up.json() as any).documentId;
+
+    // Pretend the analysis was interrupted 10 minutes ago.
+    run(
+      "UPDATE documents SET stage = 'C_ENGINE', progress = 52, stage_started_at = ? WHERE id = ?",
+      [new Date(Date.now() - 600_000).toISOString(), docId]
+    );
+
+    const d = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
+    expect(d.stage).toBe("C_ENGINE");
+    expect(d.stale).toBe(true);
+    expect(d.canRetry).toBe(true);
+
+    // …and the retry actually restarts the analysis: the stage clock is
+    // reset, so the document is no longer considered stale.
+    const retry = await authedAs(u.token, `/documents/${docId}/retry`, { method: "POST" });
+    expect(retry.status).toBe(200);
+    const after = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
+    expect(after.stale).toBe(false);
+    expect(after.elapsedMs).toBeLessThan(10_000);
+    expect(after.error).toBe("");
+
+    await new Promise((r) => setTimeout(r, 1500));
+    await cleanupUser(u.id);
+  });
+
+  it("refuses to retry a completed analysis", async () => {
+    const u = await makeUser("done");
+    const fd = new FormData();
+    fd.append("file", new Blob(["Retrieval augmented generation with dense passage retrieval and reranking."], { type: "text/plain" }), "d.txt");
+    const up = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${u.token}` }, body: fd });
+    const docId = (await up.json() as any).documentId;
+    await new Promise((r) => setTimeout(r, 1800));
+
+    const status = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
+    if (status.done) {
+      const retry = await authedAs(u.token, `/documents/${docId}/retry`, { method: "POST" });
+      expect(retry.status).toBe(409);
+    }
+    await cleanupUser(u.id);
+  });
+});

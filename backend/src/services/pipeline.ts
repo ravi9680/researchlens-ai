@@ -20,16 +20,80 @@ const STAGE_PROGRESS: Record<Stage, number> = {
   SEMANTIC_SEARCH: 64, SIMILARITY: 76, AI_SIGNALS: 86, GAPS: 93, REPORT: 98, DONE: 100, FAILED: 100,
 };
 
+/* Per-stage deadlines.
+ *
+ * A stage that overruns is *skipped with a warning*, not waited on forever.
+ * The previous pipeline had no deadline at all: if the C++ engine (or an
+ * embedding call, or the chunk cache) never settled, the analysis froze at
+ * whichever stage it had reached — usually "C ENGINE" at 52% — and the UI
+ * showed a progress bar that would never move again. A stalled analysis is
+ * worse than a degraded one: the report still gets produced, and the warnings
+ * tell the reader exactly what was skipped. */
+const STAGE_DEADLINE_MS: Partial<Record<Stage, number>> = {
+  PARSING: 30_000,
+  C_ENGINE: 20_000,
+  SEMANTIC_SEARCH: 60_000,
+  SIMILARITY: 60_000,
+  AI_SIGNALS: 20_000,
+  GAPS: 20_000,
+};
+
+/** A stage is considered stale if it has not advanced for this long. The
+ *  frontend uses it to stop showing an infinite progress bar. */
+export const STALE_AFTER_MS = 45_000;
+
 function setStage(id: string, stage: Stage, extra: Record<string, any> = {}) {
   const keys = Object.keys(extra).map((k) => `${k} = ?`).join(", ");
-  run(`UPDATE documents SET stage = ?, progress = ?${keys ? ", " + keys : ""} WHERE id = ?`,
-    [stage, STAGE_PROGRESS[stage], ...Object.values(extra), id]);
+  run(
+    `UPDATE documents SET stage = ?, progress = ?, stage_started_at = ?${keys ? ", " + keys : ""} WHERE id = ?`,
+    [stage, STAGE_PROGRESS[stage], new Date().toISOString(), ...Object.values(extra), id]
+  );
+}
+
+/** Run a stage under a hard deadline. A timeout or failure is recorded as a
+ *  warning and the pipeline continues with `fallback`. */
+async function withDeadline<T>(
+  stage: Stage,
+  warnings: string[],
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
+  const ms = STAGE_DEADLINE_MS[stage];
+  if (!ms) return fn().catch((e) => {
+    warnings.push(`${stage} failed: ${(e as Error).message}`);
+    console.warn(`[pipeline] ${stage} failed:`, (e as Error).message);
+    return fallback;
+  });
+
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`exceeded the ${ms / 1000}s budget`)), ms);
+        timer.unref?.();
+      }),
+    ]);
+  } catch (e: any) {
+    const msg = `${stage} ${e?.message?.includes("budget") ? "timed out" : "failed"}: ${e?.message || e}`;
+    warnings.push(msg);
+    console.warn(`[pipeline] ${msg}`);
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function runAnalysis(documentId: string, filePath: string, mime: string, filename: string) {
+  const warnings: string[] = [];
   try {
     setStage(documentId, "PARSING");
-    const fullText = await extractText(filePath, mime, filename);
+    const fullText = await withDeadline(
+      "PARSING", warnings,
+      () => extractText(filePath, mime, filename),
+      ""
+    );
+    if (!fullText) throw new Error("No readable text extracted. Try a text-based PDF/DOCX/TXT.");
     if (fullText.length < 50) throw new Error("No readable text extracted. Try a text-based PDF/DOCX/TXT.");
     // Length alone is not enough: binary noise can be long. Refuse to analyse
     // something that is not actually prose — a confident report on garbage is
@@ -54,17 +118,24 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
     // C engine lexical analysis (with JS fallback)
     setStage(documentId, "C_ENGINE");
     let cLexical: any = null, cKw: any = null, fingerprint = "";
-    try {
-      if (cEngineAvailable()) {
+    await withDeadline(
+      "C_ENGINE", warnings,
+      async () => {
+        if (!cEngineAvailable()) return;
         const kb = all<any>("SELECT id, substr(abstract,1,1500) AS ab FROM papers LIMIT 40");
         cLexical = await cAnalyze(fullText.slice(0, 20000), kb.map((k: any) => ({ id: k.id, text: k.ab || "" })), 8);
         cKw = await cKeywords(fullText.slice(0, 20000), 12);
         fingerprint = (await cFingerprint(fullText.slice(0, 20000))).fingerprint;
-      }
-    } catch { cLexical = null; }
+      },
+      undefined
+    );
 
     setStage(documentId, "SEMANTIC_SEARCH");
-    const sem = await analyzeDocument(fullText, { topPapers: 8, userChunks });
+    const sem = await withDeadline(
+      "SEMANTIC_SEARCH", warnings,
+      () => analyzeDocument(fullText, { topPapers: 8, userChunks }),
+      { overallSimilarity: 0, similarPapers: [], passageMatches: [], sectionScores: {} }
+    );
 
     /* One query for every candidate abstract instead of one per paper per
      * keyword — the old N+1 loop could run hundreds of statements. */
@@ -84,10 +155,22 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
     }
 
     setStage(documentId, "AI_SIGNALS");
-    const ai = analyzeAIWriting(fullText, sections);
+    const ai = await withDeadline(
+      "AI_SIGNALS", warnings,
+      async () => analyzeAIWriting(fullText, sections),
+      {
+        score: 0, level: "LOW SIGNAL" as const, reasons: ["AI-signal analysis was skipped."],
+        flaggedSections: [],
+        disclaimer: "AI-writing detection is probabilistic and can produce false positives and false negatives. This result should not be treated as proof of authorship.",
+      }
+    );
 
     setStage(documentId, "GAPS");
-    const gaps = detectGaps(fullText, topics.map((t) => t.topic), sem.similarPapers.map((p) => p.paperId));
+    const gaps = await withDeadline(
+      "GAPS", warnings,
+      async () => detectGaps(fullText, topics.map((t) => t.topic), sem.similarPapers.map((p) => p.paperId)),
+      []
+    );
 
     setStage(documentId, "REPORT");
     const summary = {
@@ -109,6 +192,7 @@ export async function runAnalysis(documentId: string, filePath: string, mime: st
         ? { used: true, algorithms: cLexical.algorithms, keywords: cKw?.keywords || [] }
         : { used: false, reason: "binary unavailable — JS fallback used", algorithms: ["tf-idf(js)", "jaccard(js)", "heap-topk(js)"] },
       userChunkCount: userChunks.length, generatedAt: new Date().toISOString(),
+      warnings,
       disclaimers: {
         similarity: "Semantic similarity measures relatedness, NOT plagiarism.",
         ai: ai.disclaimer,

@@ -23,6 +23,8 @@ function addColumn(table: string, column: string, ddl: string) {
 }
 
 addColumn("documents", "user_id", "user_id TEXT DEFAULT NULL");
+addColumn("documents", "stage_started_at", "stage_started_at TEXT DEFAULT ''");
+addColumn("documents", "file_path", "file_path TEXT DEFAULT ''");
 addColumn("ingestion_jobs", "user_id", "user_id TEXT DEFAULT NULL");
 
 /* Apply the canonical schema (creates anything missing). */

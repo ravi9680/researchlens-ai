@@ -137,6 +137,7 @@ export const api = {
     return j<{ documentId: string }>(r);
   },
   docStatus: (id: string) => api.req(`/api/documents/${id}/status`).then(j),
+  retryDoc: (id: string) => api.req(`/api/documents/${id}/retry`, { method: "POST" }).then(j),
   report: (id: string) => api.req(`/api/documents/${id}/report`).then(j),
   docs: () => api.req(`/api/documents`).then(j),
   removeDoc: (id: string) => api.req(`/api/documents/${id}`, { method: "DELETE" }).then(j),

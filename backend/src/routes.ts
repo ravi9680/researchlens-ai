@@ -7,7 +7,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
-import { runAnalysis, getReport } from "./services/pipeline.js";
+import { runAnalysis, getReport, STALE_AFTER_MS } from "./services/pipeline.js";
 import { cosine, jaccard, tokenize } from "./services/textUtils.js";
 import { detectTopics, extractKeywords } from "./services/documentParser.js";
 import { cEngineInfo, cGraph, cEngineAvailable } from "./services/cEngine.js";
@@ -406,8 +406,9 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
     const id = randomUUID();
     const filename = safeFilename(req.file.originalname);
     run(
-      "INSERT INTO documents (id, user_id, filename, mime, size_bytes, status, stage, progress) VALUES (?,?,?,?,?,?,?,?)",
-      [id, req.user!.id, filename, req.file.mimetype, req.file.size, "processing", "QUEUED", 2]
+      "INSERT INTO documents (id, user_id, filename, mime, size_bytes, status, stage, progress, stage_started_at, file_path) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      [id, req.user!.id, filename, req.file.mimetype, req.file.size, "processing", "QUEUED", 2,
+       new Date().toISOString(), req.file.path]
     );
     const fp = req.file.path;
     runAnalysis(id, fp, req.file.mimetype, filename);
@@ -441,9 +442,44 @@ router.get("/documents", auth, (req: any, res) => {
 });
 
 router.get("/documents/:id/status", auth, (req, res) => {
-  const d = get<any>("SELECT id, user_id, status, stage, progress, error, title FROM documents WHERE id = ?", [req.params.id]);
+  const d = get<any>(
+    "SELECT id, user_id, status, stage, progress, error, title, stage_started_at, file_path FROM documents WHERE id = ?",
+    [req.params.id]
+  );
   if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
-  res.json({ ...d, user_id: undefined, done: d.stage === "DONE", failed: d.stage === "FAILED" });
+
+  /* A stage that has not advanced for a while means the analysis was
+   * interrupted — the container was recycled or the process died mid-run.
+   * Reporting it as stale lets the UI offer a retry instead of spinning on
+   * a progress bar that will never move again. */
+  const started = d.stage_started_at ? Date.parse(d.stage_started_at) : 0;
+  const elapsed = started ? Date.now() - started : 0;
+  const terminal = d.stage === "DONE" || d.stage === "FAILED";
+  const stale = !terminal && elapsed > STALE_AFTER_MS;
+
+  res.json({
+    id: d.id, stage: d.stage, progress: d.progress, error: d.error, title: d.title,
+    done: d.stage === "DONE", failed: d.stage === "FAILED",
+    elapsedMs: elapsed, stale,
+    canRetry: Boolean(d.file_path) && (stale || d.stage === "FAILED"),
+    user_id: undefined,
+  });
+});
+
+/** Re-run an analysis that failed or stalled. The uploaded file is kept on
+ *  disk, so the user does not have to upload it a second time. */
+router.post("/documents/:id/retry", auth, (req, res) => {
+  const d = ownDoc(req, req.params.id);
+  if (!d) return res.status(404).json({ error: "Not found" });
+  const row = get<any>("SELECT id, file_path, mime, filename, stage FROM documents WHERE id = ?", [req.params.id]);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  if (row.stage === "DONE") return res.status(409).json({ error: "This analysis already completed." });
+  if (!row.file_path || !fs.existsSync(row.file_path)) {
+    return res.status(409).json({ error: "The uploaded file is no longer available. Please upload it again." });
+  }
+  run("UPDATE documents SET stage = 'QUEUED', progress = 2, error = '', report_json = '' WHERE id = ?", [row.id]);
+  runAnalysis(row.id, row.file_path, row.mime, row.filename);
+  res.json({ documentId: row.id, status: "processing" });
 });
 
 router.get("/documents/:id/report", auth, (req, res) => {

@@ -17,6 +17,8 @@ an `X-Request-Id` header (also present in the server log for that request).
 | GET | /admin/stats, /admin/audit | Admin only — counts and the last 100 security events |
 | POST | /upload (multipart `file`) | PDF/DOCX/TXT ≤25MB → `{ documentId }`, async analysis. 429 at the per-account storage ceiling |
 | GET | /documents, /documents/:id/status, /documents/:id/report | **auth required; strictly own docs only (else 404);** full report (409 until DONE) |
+| GET | /documents/:id/status | + `elapsedMs`, `stale` (stage has not advanced for >45s) and `canRetry` — the UI uses these to stop showing an endless progress bar |
+| POST | /documents/:id/retry | Re-runs an analysis that failed or stalled; the uploaded file is kept on disk so nothing has to be re-uploaded (409 if already DONE) |
 | GET | /documents/:id/export | Finished report as a downloadable JSON file (Content-Disposition attachment) |
 | DELETE | /documents/:id | Delete own analysis (owner or admin; 404 if not yours) |
 | GET | /papers?search&topic&sort&page | sort: relevance/year/citations. Relevance is a real weighted score (title ≫ abstract, citations as a light tie-break). Topic filters through the `paper_topics` relation. Never returns `full_text` |

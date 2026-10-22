@@ -29,26 +29,114 @@ export function cEngineInfo() {
   };
 }
 
-function runEngine(payload: unknown, timeoutMs = 8000, maxBytes = 1_500_000): Promise<any> {
+/** Run one command in the C++ engine and resolve with its JSON reply.
+ *
+ *  HARD GUARANTEE: this promise ALWAYS settles.
+ *
+ *  The previous implementation could leave the promise pending forever: the
+ *  timeout timer called `child.kill("SIGKILL")` *before* `reject(...)`, and
+ *  if the kill threw (or the child was already reaped in an unlucky order)
+ *  the rejection never happened — the `await` in the pipeline then hung
+ *  permanently and the analysis froze at whatever stage it had reached
+ *  (typically "C ENGINE", 52%), with the UI showing a progress bar that
+ *  would never move again.
+ *
+ *  Three independent guards now prevent that:
+ *    1. a deadline raced against the work, so the promise settles even if
+ *       the child never closes its pipes;
+ *    2. every kill is wrapped so it cannot throw;
+ *    3. the timers are unref'd and cleared in a `finally`. */
+function runEngine(payload: unknown, timeoutMs = 6000, maxBytes = 1_500_000): Promise<any> {
   return new Promise((resolve, reject) => {
     const bin = findBinary();
     if (!bin) return reject(new Error("C engine binary not found"));
     const json = JSON.stringify(payload);
     if (json.length > maxBytes) return reject(new Error("Input too large for C engine (chunk first)"));
-    const child = spawn(bin, [], { timeout: timeoutMs });
-    let out = "", err = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("C engine timeout")); }, timeoutMs);
-    child.stdout.on("data", (d) => { out += d; if (out.length > maxBytes) child.kill("SIGKILL"); });
-    child.stderr.on("data", (d) => { err += d; });
-    child.on("error", (e) => { clearTimeout(timer); reject(e); });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (!out) return reject(new Error("C engine produced no output " + err));
-      try { resolve(JSON.parse(out)); }
-      catch { reject(new Error("C engine returned invalid JSON")); }
+
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(bin, [], { timeout: timeoutMs, stdio: ["pipe", "pipe", "pipe"] });
+    } catch (e: any) {
+      return reject(new Error(`C engine spawn failed: ${e?.message || e}`));
+    }
+    /* stdio was requested explicitly as pipes, so these are non-null. */
+    const stdin = child.stdin!;
+    const stdout = child.stdout!;
+    const stderr = child.stderr!;
+
+    let out = "";
+    let err = "";
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    let deadline: NodeJS.Timeout | undefined;
+
+    const kill = () => {
+      try { child.kill("SIGKILL"); } catch { /* the child may already be gone */ }
+    };
+
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (deadline) clearTimeout(deadline);
+      fn();
+    };
+
+    /* Hard deadline — the promise settles even if the child never exits. */
+    deadline = setTimeout(() => {
+      kill();
+      settle(() => reject(new Error(`C engine timeout after ${timeoutMs}ms`)));
+    }, timeoutMs + 500);
+    deadline.unref?.();
+
+    timer = setTimeout(() => {
+      kill();
+      settle(() => reject(new Error(`C engine timeout after ${timeoutMs}ms`)));
+    }, timeoutMs);
+    timer.unref?.();
+
+    /* Stream error handlers are ESSENTIAL, not defensive noise.
+     * If the child is killed (or exits early) while Node is still writing the
+     * payload, `child.stdin` emits EPIPE. A stream 'error' event with no
+     * listener is an *uncaught exception* — it tears down the whole Node
+     * process. On Render that means the container restarts mid-analysis, the
+     * documents row stays frozen at whatever stage it had reached ("C ENGINE",
+     * 52%), and the progress bar never moves again. The same applies to
+     * stdout/stderr when the child dies with its pipes open. */
+    const swallow = (label: string) => (e: any) => {
+      if (!settled) settle(() => reject(new Error(`C engine ${label}: ${e?.message || e}`)));
+    };
+    stdin.on("error", swallow("stdin failed"));
+    stdout.on("error", swallow("stdout failed"));
+    stderr.on("error", swallow("stderr failed"));
+
+    stdout.on("data", (d) => {
+      out += d;
+      if (out.length > maxBytes) kill();
     });
-    child.stdin.write(json);
-    child.stdin.end();
+    stderr.on("data", (d) => { err += d; });
+
+    child.on("error", (e) => {
+      settle(() => reject(new Error(`C engine error: ${e?.message || e}`)));
+    });
+
+    child.on("close", () => {
+      if (!out) {
+        settle(() => reject(new Error("C engine produced no output" + (err ? `: ${err.slice(0, 300)}` : ""))));
+        return;
+      }
+      let parsed: any;
+      try { parsed = JSON.parse(out); }
+      catch { settle(() => reject(new Error("C engine returned invalid JSON"))); return; }
+      settle(() => resolve(parsed));
+    });
+
+    try {
+      stdin.write(json);
+      stdin.end();
+    } catch (e: any) {
+      settle(() => reject(new Error(`C engine input failed: ${e?.message || e}`)));
+    }
   });
 }
 

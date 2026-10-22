@@ -241,6 +241,68 @@ describe("research explorer", () => {
   });
 });
 
+describe("stalled analysis", () => {
+  it("offers a retry instead of an endless progress bar when the stage goes stale", async () => {
+    let retried = 0;
+    mockFetch((url, init) => {
+      if (url.includes("/retry")) { retried++; return { body: { documentId: "d1", status: "processing" } }; }
+      if (url.includes("/documents/d1/status")) {
+        return {
+          body: {
+            id: "d1", stage: "C_ENGINE", progress: 52, error: "", title: "Sample",
+            done: false, failed: false,
+            elapsedMs: 600_000, stale: true, canRetry: true,
+          },
+        };
+      }
+      return { body: {} };
+    });
+
+    const { Processing } = await import("./pages/Processing");
+    wrap(
+      <Routes>
+        <Route path="/app/processing/:id" element={<Processing />} />
+      </Routes>,
+      "/app/processing/d1"
+    );
+
+    await waitFor(() => expect(screen.getByText(/stopped responding/i)).toBeTruthy());
+    expect(screen.getByText(/C ENGINE/i)).toBeTruthy();
+
+    const retry = screen.getByRole("button", { name: /Retry analysis/i });
+    await userEvent.click(retry);
+    await waitFor(() => expect(retried).toBe(1));
+  });
+
+  it("shows the elapsed time while the analysis is running normally", async () => {
+    mockFetch((url) => {
+      if (url.includes("/documents/d1/status")) {
+        return {
+          body: {
+            id: "d1", stage: "SIMILARITY", progress: 76, error: "", title: "Sample",
+            done: false, failed: false, elapsedMs: 12_000, stale: false, canRetry: false,
+          },
+        };
+      }
+      return { body: {} };
+    });
+
+    const { Processing } = await import("./pages/Processing");
+    wrap(
+      <Routes>
+        <Route path="/app/processing/:id" element={<Processing />} />
+      </Routes>,
+      "/app/processing/d1"
+    );
+
+    // Wait for the polled status to arrive (the stage list renders
+    // immediately, so it cannot be used as the readiness signal).
+    await waitFor(() => expect(document.body.textContent).toContain("76%"));
+    // No stale warning while the stage is still advancing.
+    expect(screen.queryByText(/stopped responding/i)).toBeNull();
+  });
+});
+
 describe("grounded chat", () => {
   it("sends a question and renders the grounded answer with its references", async () => {
     mockFetch((url) => {

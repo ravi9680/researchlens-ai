@@ -22,6 +22,14 @@ semantics.
 SEMANTIC_SEARCH → SIMILARITY → AI_SIGNALS → GAPS → REPORT → DONE.
 Polled via `GET /api/documents/:id/status`. Failures land in FAILED with message.
 
+**No stage can hang the pipeline.** Each stage runs under a hard deadline
+(`STAGE_DEADLINE_MS` in `services/pipeline.ts`); a stage that overruns is
+*skipped with a warning* rather than waited on, so the report is still
+produced and `report.warnings` records exactly what was skipped. The status
+endpoint reports `elapsedMs`, `stale` (no progress for 45 s — usually a
+container recycle) and `canRetry`; `POST /api/documents/:id/retry` re-runs the
+analysis from the file still on disk.
+
 **Key services (`backend/src/services/`):** `documentParser` (pdf/mammoth/txt,
 section detection, keywords, topics, prose-readability guard) · `textUtils`
 (tokenize, chunk, hash embeddings, cosine, fuzzy) · `hashing` (the single
