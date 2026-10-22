@@ -136,6 +136,11 @@ int main(void) {
     int compi[8];
     CHECK(gi.components(compi) == 2, "components with isolated node");
 
-    std::printf("ALL C++ TESTS PASSED (%d checks)\n", passed);
+
+
+std::printf("ALL C++ TESTS PASSED (%d checks)\n", passed);
     return 0;
+
+
+    
 }
