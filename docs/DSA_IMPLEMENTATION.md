@@ -48,6 +48,27 @@ heads → weighted aggregate → heap top-K. Real run:
 `p1 (phishing/xgboost) = 71.4` vs `p2 (vision) = 1.3` — lexical ranking agrees
 with semantic search, reported side-by-side, never merged silently.
 
+## Optimisation log (found and fixed by profiling)
+
+| What | Before | After | Effect |
+|---|---|---|---|
+| `Similarity::jaccard_tokens` (`src/similarity.cpp`) | dedup by scanning every earlier token — O(n²) string compares | `unordered_set` dedup + hash lookup — O(n) expected | 3.4e7 → O(n) compares per candidate |
+| `Similarity::cosine_tf` (`src/similarity.cpp`) | O(n²) dedup + O(n²) frequency counting | `unordered_map` term-frequency maps — O(n) | one pass per side |
+| `Similarity::trigram_similarity` (`src/similarity.cpp`) | O(n²) window dedup + O(n·m) intersection | hash the 3-char windows — O(n) expected | ~2e8 → O(n) compares per candidate |
+| Passage matching (`backend/src/services/similarity.ts`) | embedded inside the innermost loop | `Memo` class — embeddings cached by text | ~9600 → ~280 vector builds |
+| Document chunking (`backend/src/services/pipeline.ts`) | chunked + embedded twice (pipeline *and* similarity service) | chunked once, list shared | 2× → 1× embedding work |
+| Matched-concept lookup (`backend/src/services/pipeline.ts`) | one query per paper **per keyword** | one query per paper | N+1 → N |
+| Topic counts (`backend/src/routes.ts`) | one query per paper | one grouped query | N+1 → 1 |
+
+**Measured effect of the similarity rewrite:** the same `analyze` payload over
+the real knowledge base went from **1.73–1.98 s to 0.01–0.02 s** (~170×),
+and the resulting scores are **byte-identical** — the hash sets only decide
+which occurrences are counted once, never what is counted. The old
+implementation was slow enough to blow the C engine's time budget on a shared
+0.5-CPU container, which skipped the lexical stage entirely and could take
+the server down with it (an EPIPE on the child stdin pipe with no error
+listener is an uncaught exception).
+
 ## Limitations & optimizations
 
 - Lexical ≠ semantic: paraphrases score low lexically; embeddings cover meaning.
