@@ -461,6 +461,11 @@ const recovering = new Map<string, number>();
 const MAX_AUTO_RECOVERY = 3;
 
 function recoverIfStale(doc: any): void {
+  // Keep the repair map from growing without bound on a long-lived process.
+  if (recovering.size > 500) {
+    const oldest = [...recovering.keys()].slice(0, recovering.size - 400);
+    for (const k of oldest) recovering.delete(k);
+  }
   const tries = recovering.get(doc.id) || 0;
   if (tries >= MAX_AUTO_RECOVERY) {
     run(
