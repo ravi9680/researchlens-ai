@@ -104,6 +104,7 @@ export function createApp() {
   if (distDir) {
     app.use(
       express.static(distDir, {
+        // Hashed asset filenames are safe to cache forever.
         maxAge: config.isProduction ? "7d" : 0,
         etag: true,
         setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
@@ -111,6 +112,15 @@ export function createApp() {
     );
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api")) return next();
+      /* The HTML must never be served from a browser cache. It is the file
+       * that points at the hashed bundles, so a cached copy pins the user to
+       * an old build — the page then keeps running old JavaScript (with the
+       * old progress-bar behaviour) even though the server has been updated.
+       * `no-cache` means "revalidate every time", which is cheap: the
+       * bundles themselves stay cached for 7 days. */
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(distDir, "index.html"));
     });
     console.log("serving frontend from", distDir);

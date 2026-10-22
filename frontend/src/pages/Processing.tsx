@@ -23,6 +23,14 @@ export function Processing() {
 
   useEffect(() => { if (d?.done) nav(`/app/results/${id}`); }, [d, id, nav]);
 
+  /* The server repairs a stalled analysis by re-running it the moment it
+   * notices the stage has stopped advancing. When that happens the stage
+   * changes under us, so pull the new state straight away instead of
+   * waiting for the next poll. */
+  useEffect(() => {
+    if (d?.recovered) q.refetch();
+  }, [d?.recovered]);
+
   /* A local ticker so the elapsed time keeps moving between polls. */
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

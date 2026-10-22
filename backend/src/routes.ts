@@ -441,27 +441,82 @@ router.get("/documents", auth, (req: any, res) => {
   res.json(rows);
 });
 
+/** Self-healing for interrupted analyses.
+ *
+ *  A stale document means the analysis died mid-flight — almost always the
+ *  container was recycled (Render's free tier restarts idle instances) while
+ *  the background job was running. The row keeps the stage it had reached, so
+ *  the progress bar in the browser sits at that stage forever.
+ *
+ *  The UI can offer a retry, but a browser that still has the *old*
+ *  JavaScript cached does not understand the `stale` flag and would keep
+ *  polling the same frozen row. So the server repairs it instead: as soon as
+ *  a status poll notices a stale document, the analysis is re-run from the
+ *  file that is still on disk.
+ *
+ *  `attempts` bounds the repair so a document whose file has gone cannot
+ *  spin forever — after the limit it is failed cleanly, and the UI shows a
+ *  real error instead of a fake progress bar. */
+const recovering = new Map<string, number>();
+const MAX_AUTO_RECOVERY = 3;
+
+function recoverIfStale(doc: any): void {
+  const tries = recovering.get(doc.id) || 0;
+  if (tries >= MAX_AUTO_RECOVERY) {
+    run(
+      "UPDATE documents SET stage = 'FAILED', error = ? WHERE id = ?",
+      ["The analysis was interrupted repeatedly and could not be recovered. Please upload the file again.", doc.id]
+    );
+    return;
+  }
+  if (!doc.file_path || !fs.existsSync(doc.file_path)) {
+    run(
+      "UPDATE documents SET stage = 'FAILED', error = ? WHERE id = ?",
+      ["The analysis was interrupted and the uploaded file is no longer available on the server. Please upload it again.", doc.id]
+    );
+    return;
+  }
+
+  recovering.set(doc.id, tries + 1);
+  console.log(`[recover] re-running stalled analysis ${doc.id} (attempt ${tries + 1})`);
+  run(
+    "UPDATE documents SET stage = 'QUEUED', progress = 2, error = '', report_json = '', stage_started_at = ? WHERE id = ?",
+    [new Date().toISOString(), doc.id]
+  );
+  runAnalysis(doc.id, doc.file_path, doc.mime, doc.filename).finally(() => {
+    // keep the counter: it bounds how often one document may be repaired
+  });
+}
+
 router.get("/documents/:id/status", auth, (req, res) => {
   const d = get<any>(
-    "SELECT id, user_id, status, stage, progress, error, title, stage_started_at, file_path FROM documents WHERE id = ?",
+    "SELECT id, user_id, status, stage, progress, error, title, stage_started_at, file_path, mime, filename FROM documents WHERE id = ?",
     [req.params.id]
   );
   if (!d || !docVisibleTo(req, d)) return res.status(404).json({ error: "Not found" });
 
   /* A stage that has not advanced for a while means the analysis was
    * interrupted — the container was recycled or the process died mid-run.
-   * Reporting it as stale lets the UI offer a retry instead of spinning on
-   * a progress bar that will never move again. */
+   * Repair it server-side so the progress bar starts moving again. */
   const started = d.stage_started_at ? Date.parse(d.stage_started_at) : 0;
   const elapsed = started ? Date.now() - started : 0;
   const terminal = d.stage === "DONE" || d.stage === "FAILED";
   const stale = !terminal && elapsed > STALE_AFTER_MS;
 
+  if (stale) {
+    try { recoverIfStale(d); }
+    catch (e: any) { console.error("[recover] failed:", e?.message || e); }
+  }
+
+  const after = get<any>("SELECT stage, progress, error FROM documents WHERE id = ?", [d.id]);
   res.json({
-    id: d.id, stage: d.stage, progress: d.progress, error: d.error, title: d.title,
-    done: d.stage === "DONE", failed: d.stage === "FAILED",
+    id: d.id, stage: after?.stage ?? d.stage, progress: after?.progress ?? d.progress,
+    error: after?.error ?? d.error, title: d.title,
+    done: (after?.stage ?? d.stage) === "DONE",
+    failed: (after?.stage ?? d.stage) === "FAILED",
     elapsedMs: elapsed, stale,
-    canRetry: Boolean(d.file_path) && (stale || d.stage === "FAILED"),
+    canRetry: Boolean(d.file_path) && (stale || (after?.stage ?? d.stage) === "FAILED"),
+    recovered: stale,
     user_id: undefined,
   });
 });
@@ -477,7 +532,9 @@ router.post("/documents/:id/retry", auth, (req, res) => {
   if (!row.file_path || !fs.existsSync(row.file_path)) {
     return res.status(409).json({ error: "The uploaded file is no longer available. Please upload it again." });
   }
-  run("UPDATE documents SET stage = 'QUEUED', progress = 2, error = '', report_json = '' WHERE id = ?", [row.id]);
+  recovering.delete(req.params.id);   // an explicit retry resets the repair budget
+  run("UPDATE documents SET stage = 'QUEUED', progress = 2, error = '', report_json = '', stage_started_at = ? WHERE id = ?",
+    [new Date().toISOString(), row.id]);
   runAnalysis(row.id, row.file_path, row.mime, row.filename);
   res.json({ documentId: row.id, status: "processing" });
 });

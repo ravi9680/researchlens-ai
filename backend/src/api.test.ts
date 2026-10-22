@@ -669,9 +669,11 @@ describe("stalled analysis", () => {
     );
 
     const d = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
-    expect(d.stage).toBe("C_ENGINE");
     expect(d.stale).toBe(true);
     expect(d.canRetry).toBe(true);
+    // The server has already started repairing it, so the stage has moved on
+    // from the frozen one.
+    expect(d.stage).not.toBe("C_ENGINE");
 
     // …and the retry actually restarts the analysis: the stage clock is
     // reset, so the document is no longer considered stale.
@@ -699,6 +701,56 @@ describe("stalled analysis", () => {
       const retry = await authedAs(u.token, `/documents/${docId}/retry`, { method: "POST" });
       expect(retry.status).toBe(409);
     }
+    await cleanupUser(u.id);
+  });
+
+  it("re-runs a stalled analysis automatically when the status is polled", async () => {
+    const u = await makeUser("autorecover");
+    const fd = new FormData();
+    fd.append("file", new Blob(["Phishing detection with gradient boosting on URL length features."], { type: "text/plain" }), "ar.txt");
+    const up = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${u.token}` }, body: fd });
+    const docId = (await up.json() as any).documentId;
+
+    // Simulate an analysis that was interrupted 10 minutes ago (the container
+    // was recycled while the job was running).
+    run(
+      "UPDATE documents SET stage = 'C_ENGINE', progress = 52, stage_started_at = ? WHERE id = ?",
+      [new Date(Date.now() - 600_000).toISOString(), docId]
+    );
+
+    const first = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
+    expect(first.stale).toBe(true);
+    // The server repairs it by itself — the browser does not need a new build
+    // or a retry click for the progress bar to start moving again.
+    expect(first.recovered).toBe(true);
+
+    // The stage clock restarted, so it is no longer considered stale.
+    const second = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
+    expect(second.stale).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 1500));
+    await cleanupUser(u.id);
+  });
+
+  it("fails a stalled analysis cleanly when the uploaded file is gone", async () => {
+    const u = await makeUser("nofile");
+    const fd = new FormData();
+    fd.append("file", new Blob(["Anomaly detection with LSTM baselines on network traffic."], { type: "text/plain" }), "nf.txt");
+    const up = await fetch(`${base}/upload`, { method: "POST", headers: { Authorization: `Bearer ${u.token}` }, body: fd });
+    const docId = (await up.json() as any).documentId;
+
+    // The file vanished (ephemeral filesystem) and the stage stopped advancing.
+    run(
+      "UPDATE documents SET stage = 'C_ENGINE', progress = 52, stage_started_at = ?, file_path = '/tmp/definitely-not-here.pdf' WHERE id = ?",
+      [new Date(Date.now() - 600_000).toISOString(), docId]
+    );
+
+    const d = await (await authedAs(u.token, `/documents/${docId}/status`)).json() as any;
+    // It must end in a real failure with a readable message, never in an
+    // endless progress bar.
+    expect(d.failed).toBe(true);
+    expect(String(d.error || "")).toMatch(/upload it again|no longer available/i);
+
     await cleanupUser(u.id);
   });
 });
