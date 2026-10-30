@@ -49,10 +49,11 @@ function firstParagraph(text: string): string {
 function headingBlock(line: string): { text: string; level: "Heading1" | "Heading2" } | undefined {
   const t = (line || "").trim();
   if (!t) return undefined;
-  const known = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+work|appendix|appendices|acknowledgements?)\b/i;
+  const known = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+(work|scope)|appendix|appendices|acknowledgements?|research\s+gap|problem\s+statement)\b/i;
   if (known.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
   if (t.length > 90) return undefined;
-  if (/^[IVXLCDM]+[\.\)]?\s+\S/.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
+  const romanMain = /^((?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII)[.)]?\s+[A-Z])/;
+  if (romanMain.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
   if (/^[A-Z][.)]\s+\S/.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading2" };
   return undefined;
 }
