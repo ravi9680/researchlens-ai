@@ -3,7 +3,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 /* IEEE paper export — takes raw research content (or an extracted file
  *  body) and renders it as a downloadable Word document in IEEE conference
  *  format. Backed by the `docx` generator; typography follows the IEEE
- *  conference paper conventions (Times New Roman, 10 pt body, 1" margins,
+ *  conference paper conventions (Times New Roman, 10 pt body, A4 page,
  *  two-column body, front matter with title/authors/abstract/keywords). */
 
 export interface IeeeMeta {
@@ -16,13 +16,16 @@ export interface IeeeMeta {
 const MAX_CONTENT_CHARS = 500_000;
 const INCH_TWIPS = 1440;
 const BODY_FONT = "Times New Roman";
+const A4_WIDTH = 11906; // A4 width in twips
+const A4_HEIGHT = 16838; // A4 height in twips
 
-function para(
-  text: string,
-  opts: { heading?: (typeof HeadingLevel)[keyof typeof HeadingLevel]; size?: number; bold?: boolean; italics?: boolean } = {}
-): Paragraph {
+type HeadingVal = "Title" | "Heading1" | "Heading2";
+type AlignVal = "start" | "end" | "center" | "both" | "distribute" | "mediumKashida" | "thaiDistribute" | "numTab" | "highKashida" | "lowKashida" | "left" | "right";
+
+function para(text: string, opts: { heading?: HeadingVal; size?: number; bold?: boolean; italics?: boolean; alignment?: AlignVal } = {}): Paragraph {
   return new Paragraph({
     ...(opts.heading ? { heading: opts.heading } : {}),
+    alignment: opts.alignment,
     children: [
       new TextRun({
         text,
@@ -43,18 +46,18 @@ function firstParagraph(text: string): string {
   return line || "";
 }
 
-/** Recognise IEEE-style section headings: known names, or "I. Something". */
-function headingOf(line: string): string | undefined {
+function headingBlock(line: string): { text: string; level: "Heading1" | "Heading2" } | undefined {
   const t = (line || "").trim();
   if (!t || t.length > 90) return undefined;
   const known = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+work|appendix|appendices|acknowledgements?)\b/i;
-  if (known.test(t)) return t.replace(/\s+/g, " ").trim();
-  if (/^[IVXLCDM]+[\.\)]?\s+\S/.test(t)) return t.replace(/\s+/g, " ").trim();
+  if (known.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
+  if (/^[IVXLCDM]+[\.\)]?\s+\S/.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
+  if (/^[A-Z][.)]\s+\S/.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading2" };
   return undefined;
 }
 
 function isHeadingLine(line: string): boolean {
-  return headingOf(line) !== undefined;
+  return headingBlock(line) !== undefined;
 }
 
 function blockEnd(lines: string[], start: number): number {
@@ -71,6 +74,23 @@ function authorsFromContent(lines: string[], beforeIdx: number): string[] {
       const v = l.replace(/^author\b[:\-]?\s*/i, "").trim();
       if (v) out.push(v);
     }
+  }
+  return out;
+}
+
+/** First author surname of a IEEE-style reference line, e.g. "[1] A. L. Buczak and E. Guven, ...". */
+function refAuthorKey(refLine: string): string {
+  const m = refLine.match(/([A-Z][a-z]+)/);
+  const author = m ? m[1] : refLine.trim().replace(/^\[\d+\]\s*/, "");
+  return author.toLowerCase();
+}
+
+/** Append an IEEE in-text citation "[n]" to a content line when its author is cited. */
+function citeLine(line: string, refKeys: string[]): string {
+  let out = line;
+  for (let n = 0; n < refKeys.length; n++) {
+    const key = refKeys[n];
+    if (key && !out.includes(`[${n + 1}]`) && out.toLowerCase().includes(key)) out = out + ` [${n + 1}]`;
   }
   return out;
 }
@@ -101,11 +121,13 @@ export async function generateIeeeDocx(content: string, meta: IeeeMeta = {}): Pr
         })();
   const abstract = (meta.abstract && meta.abstract.trim()) || firstParagraph(text);
 
-  const frontMatter: Paragraph[] = [para(title, { heading: HeadingLevel.TITLE, size: 36, bold: true })];
-  if (authors.length) frontMatter.push(para(authors.join(", "), { size: 22, bold: true }));
-  if (abstract) frontMatter.push(para(`Abstract: ${abstract}`, { size: 20, italics: true }));
-  const keywordLine = keywords.length ? `Keywords — ${keywords.join("; ")}.` : undefined;
-  if (keywordLine) frontMatter.push(para(keywordLine, { size: 20 }));
+  const frontMatter: Paragraph[] = [
+    para(title, { heading: "Title", size: 36, bold: true, alignment: "center" }),
+  ];
+  if (authors.length) frontMatter.push(para(authors.join(", "), { size: 22, bold: true, alignment: "center" }));
+  if (abstract) frontMatter.push(para(`ABSTRACT— ${abstract}`, { size: 20, italics: true, alignment: "both" }));
+  const keywordLine = keywords.length ? `INDEX TERMS— ${keywords.join("; ")}.` : undefined;
+  if (keywordLine) frontMatter.push(para(keywordLine, { size: 20, alignment: "both" }));
 
   /* Body: everything after the abstract / keywords regions, grouped into
    *  heading-led blocks (IEEE sections) or plain paragraphs. */
@@ -115,29 +137,43 @@ export async function generateIeeeDocx(content: string, meta: IeeeMeta = {}): Pr
   const kwEnd = kwIdx >= 0 ? blockEnd(lines, kwIdx + 1) : absEnd;
   const bodyStart = Math.max(absEnd, kwEnd);
 
+  /* In-text citations: collect reference lines, then append "[n]" to content
+   *  lines that mention the cited author's work. */
+  const refIdxs: number[] = [];
+  for (let i = bodyStart; i < lines.length; i++) if (/^\[\d+\]/.test(lines[i])) refIdxs.push(i);
+  const refKeys: string[] = refIdxs.map((i) => refAuthorKey(lines[i]));
+  const cite = (line: string): string => {
+    let out = line;
+    for (let n = 0; n < refKeys.length; n++) {
+      const key = refKeys[n];
+      if (key && !out.includes(`[${n + 1}]`) && out.toLowerCase().includes(key)) out = out + ` [${n + 1}]`;
+    }
+    return out;
+  };
+
   const body: Paragraph[] = [];
-  let cur: { heading?: string; paras: string[] } = { paras: [] };
+  let cur: { heading?: string; level?: "Heading1" | "Heading2"; paras: string[] } = { paras: [] };
   const flush = () => {
     if (cur.paras.length) {
-      if (cur.heading) body.push(para(cur.heading, { heading: HeadingLevel.HEADING_1, size: 26, bold: true }));
-      for (const p of cur.paras) body.push(para(p, { size: 20 }));
+      if (cur.heading) body.push(para(cur.heading, { heading: cur.level ?? "Heading1", size: 26, bold: true }));
+      for (const p of cur.paras) body.push(para(p, { size: 20, alignment: "both" }));
     }
     cur = { paras: [] };
   };
   for (const line of lines.slice(bodyStart)) {
-    const h = headingOf(line);
-    if (h) {
+    const hb = headingBlock(line);
+    if (hb) {
       flush();
-      cur = { heading: h, paras: [] };
+      cur = { heading: hb.text, level: hb.level, paras: [] };
     } else {
-      cur.paras.push(line);
+      cur.paras.push(cite(line));
     }
   }
   flush();
-  if (body.length === 0) body.push(para(text.slice(0, 2000), { size: 20 }));
+  if (body.length === 0) body.push(para(text.slice(0, 2000), { size: 20, alignment: "both" }));
 
   const pageProps = {
-    page: { margin: { top: INCH_TWIPS, right: INCH_TWIPS, bottom: INCH_TWIPS, left: INCH_TWIPS } },
+    page: { margin: { top: INCH_TWIPS, right: INCH_TWIPS, bottom: INCH_TWIPS, left: INCH_TWIPS }, width: A4_WIDTH, height: A4_HEIGHT },
   };
 
   const doc = new Document({
@@ -151,5 +187,6 @@ export async function generateIeeeDocx(content: string, meta: IeeeMeta = {}): Pr
     ],
   });
 
-  return Packer.toBuffer(doc);
+  const buf = await Packer.toBuffer(doc);
+  return buf;
 }
