@@ -1,6 +1,4 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
-import { detectSections, extractTitle } from "./documentParser.js";
-import { normalizeWhitespace } from "./textUtils.js";
 
 /* IEEE paper export — takes raw research content (or an extracted file
  *  body) and renders it as a downloadable Word document in IEEE conference
@@ -45,44 +43,97 @@ function firstParagraph(text: string): string {
   return line || "";
 }
 
-/** Split prose into paragraphs (blank-line separated; hard newlines become paragraph breaks). */
-function toParagraphs(text: string): string[] {
-  const cleaned = (text || "").replace(/\r\n?/g, "\n");
-  const blocks = cleaned
-    .split(/\n\s*\n/)
-    .map((b) => b.replace(/\s+/g, " ").trim())
-    .filter((b) => b.length > 0);
+/** Recognise IEEE-style section headings: known names, or "I. Something". */
+function headingOf(line: string): string | undefined {
+  const t = (line || "").trim();
+  if (!t || t.length > 90) return undefined;
+  const known = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+work|appendix|appendices|acknowledgements?)\b/i;
+  if (known.test(t)) return t.replace(/\s+/g, " ").trim();
+  if (/^[IVXLCDM]+[\.\)]?\s+\S/.test(t)) return t.replace(/\s+/g, " ").trim();
+  return undefined;
+}
+
+function isHeadingLine(line: string): boolean {
+  return headingOf(line) !== undefined;
+}
+
+function blockEnd(lines: string[], start: number): number {
+  for (let i = start; i < lines.length; i++) if (isHeadingLine(lines[i])) return i;
+  return lines.length;
+}
+
+/** Extract author names from content lines that look like "Author: ..." metadata. */
+function authorsFromContent(lines: string[], beforeIdx: number): string[] {
   const out: string[] = [];
-  for (const b of blocks) {
-    const lines = b.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-    if (lines.length > 1) out.push(...lines);
-    else if (b) out.push(b);
+  for (let i = 0; i < beforeIdx; i++) {
+    const l = lines[i];
+    if (/^author\b/i.test(l)) {
+      const v = l.replace(/^author\b[:\-]?\s*/i, "").trim();
+      if (v) out.push(v);
+    }
   }
   return out;
 }
 
 /** Render raw content into the IEEE front matter + two-column body. */
 export async function generateIeeeDocx(content: string, meta: IeeeMeta = {}): Promise<Buffer> {
-  const text = normalizeWhitespace(content).slice(0, MAX_CONTENT_CHARS);
-  const title = (meta.title?.trim() || extractTitle(text, "research-paper") || "Untitled research paper").trim().slice(0, 300);
-  const authors = (meta.authors || []).map((a) => String(a).trim()).filter(Boolean).slice(0, 20);
-  const keywords = (meta.keywords || []).map((k) => String(k).trim()).filter(Boolean).slice(0, 15);
-  const abstractText = (meta.abstract?.trim() || firstParagraph(text)).trim();
+  /* Preserve paragraph structure: newlines are meaningful here (IEEE paper
+   *  content is heading/paragraph oriented), so do NOT run it through
+   *  normalizeWhitespace (which collapses whitespace into one line). */
+  const text = (content || "").replace(/\r\n?/g, "\n").slice(0, MAX_CONTENT_CHARS);
+  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const first = firstParagraph(text);
+  const title = ((meta.title && meta.title.trim()) || first || "Untitled research paper").trim().slice(0, 300);
+  const authors =
+    meta.authors && meta.authors.length
+      ? meta.authors.map((a) => String(a).trim()).filter(Boolean).slice(0, 20)
+      : authorsFromContent(lines, lines.findIndex((l) => /^abstract\b/i.test(l)));
+  const keywords =
+    meta.keywords && meta.keywords.length
+      ? meta.keywords.map((k) => String(k).trim()).filter(Boolean).slice(0, 15)
+      : (() => {
+          const kwIdx = lines.findIndex((l) => /^(keywords?|index\s+terms?)\b/i.test(l));
+          if (kwIdx < 0) return [];
+          const end = blockEnd(lines, kwIdx + 1);
+          const out: string[] = [];
+          for (let i = kwIdx + 1; i < end; i++) out.push(lines[i]);
+          return out;
+        })();
+  const abstract = (meta.abstract && meta.abstract.trim()) || firstParagraph(text);
 
-  const frontMatter: Paragraph[] = [
-    para(title, { heading: HeadingLevel.TITLE, size: 36, bold: true }),
-  ];
+  const frontMatter: Paragraph[] = [para(title, { heading: HeadingLevel.TITLE, size: 36, bold: true })];
   if (authors.length) frontMatter.push(para(authors.join(", "), { size: 22, bold: true }));
-  if (abstractText) frontMatter.push(para(`Abstract: ${abstractText}`, { size: 20, italics: true }));
-  if (keywords.length) frontMatter.push(para(`Index Terms — ${keywords.join("; ")}.`, { size: 20 }));
+  if (abstract) frontMatter.push(para(`Abstract: ${abstract}`, { size: 20, italics: true }));
+  const keywordLine = keywords.length ? `Keywords — ${keywords.join("; ")}.` : undefined;
+  if (keywordLine) frontMatter.push(para(keywordLine, { size: 20 }));
+
+  /* Body: everything after the abstract / keywords regions, grouped into
+   *  heading-led blocks (IEEE sections) or plain paragraphs. */
+  const absIdx = lines.findIndex((l) => /^abstract\b/i.test(l));
+  const kwIdx = lines.findIndex((l) => /^(keywords?|index\s+terms?)\b/i.test(l));
+  const absEnd = absIdx >= 0 ? blockEnd(lines, absIdx + 1) : lines.length;
+  const kwEnd = kwIdx >= 0 ? blockEnd(lines, kwIdx + 1) : absEnd;
+  const bodyStart = Math.max(absEnd, kwEnd);
 
   const body: Paragraph[] = [];
-  for (const section of detectSections(text)) {
-    const contentText = (section.content || "").trim();
-    if (!contentText) continue;
-    body.push(para(section.name, { heading: HeadingLevel.HEADING_1, size: 26, bold: true }));
-    for (const p of toParagraphs(contentText)) body.push(para(p, { size: 20 }));
+  let cur: { heading?: string; paras: string[] } = { paras: [] };
+  const flush = () => {
+    if (cur.paras.length) {
+      if (cur.heading) body.push(para(cur.heading, { heading: HeadingLevel.HEADING_1, size: 26, bold: true }));
+      for (const p of cur.paras) body.push(para(p, { size: 20 }));
+    }
+    cur = { paras: [] };
+  };
+  for (const line of lines.slice(bodyStart)) {
+    const h = headingOf(line);
+    if (h) {
+      flush();
+      cur = { heading: h, paras: [] };
+    } else {
+      cur.paras.push(line);
+    }
   }
+  flush();
   if (body.length === 0) body.push(para(text.slice(0, 2000), { size: 20 }));
 
   const pageProps = {
