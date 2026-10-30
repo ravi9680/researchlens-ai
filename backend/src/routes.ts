@@ -617,6 +617,29 @@ router.get("/documents/:id/export", auth, (req, res) => {
   res.json({ ...r.report, exportedAt: new Date().toISOString() });
 });
 
+/** Export a stored (already analysed) document as a formatted IEEE conference
+ *  paper (.docx). The uploaded file is kept on disk, so this works long after
+ *  the analysis finished — the user gets the IEEE-format paper as a download. */
+router.post("/documents/:id/ieee-format", auth, async (req, res) => {
+  try {
+    const d = ownDoc(req, req.params.id);
+    if (!d) return res.status(404).json({ error: "Not found" });
+    const row = get<any>("SELECT id, user_id, file_path, mime, filename, stage, title FROM documents WHERE id = ?", [req.params.id]);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    if (!row.file_path || !fs.existsSync(row.file_path)) {
+      return res.status(409).json({ error: "The uploaded file is no longer available. Please upload it again." });
+    }
+    const content = await extractText(row.file_path, row.mime, row.filename);
+    const s = ieeeMetaSchema.safeParse(req.body || {});
+    if (!s.success) return res.status(400).json({ error: "Invalid input" });
+    const buf = await generateIeeeDocx(content, { ...s.data, title: s.data.title || row.title || undefined });
+    setIeeeDocxHeaders(res, s.data.title || row.title || "paper");
+    return res.status(200).send(buf);
+  } catch (e: any) {
+    return res.status(400).json({ error: e?.message || "Could not prepare the IEEE paper." });
+  }
+});
+
 router.delete("/documents/:id", auth, (req, res) => {
   const d = ownDoc(req, req.params.id);
   if (!d) return res.status(404).json({ error: "Not found" });

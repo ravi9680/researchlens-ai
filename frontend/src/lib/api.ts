@@ -142,6 +142,12 @@ export const api = {
   docs: () => api.req(`/api/documents`).then(j),
   removeDoc: (id: string) => api.req(`/api/documents/${id}`, { method: "DELETE" }).then(j),
   exportReport: (id: string) => api.req(`/api/documents/${id}/export`).then(j),
+  ieeeFormatDoc: (id: string, meta: any = {}) =>
+    api.req(`/api/documents/${id}/ieee-format`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(meta),
+    }),
 
   /* ---- knowledge base ---- */
   papers: (p: Record<string, string> = {}) =>

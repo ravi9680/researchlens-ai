@@ -138,6 +138,25 @@ export function Results() {
           >
             <Braces size={15} /> Export JSON
           </button>
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              try {
+                const res = await api.ieeeFormatDoc(id, { title: r.title, abstract: r.abstract, keywords: r.keywords, authors: (r.authors || []).join(", ") });
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `ieee-paper-${id.slice(0, 8)}.docx`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (e: any) {
+                alert(e.message);
+              }
+            }}
+          >
+            <FileText size={15} /> Export IEEE format
+          </button>
           <button className="btn-primary" onClick={() => window.print()}>
             <Download size={15} /> Export PDF
           </button>
