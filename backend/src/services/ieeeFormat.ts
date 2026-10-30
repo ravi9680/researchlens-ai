@@ -48,9 +48,10 @@ function firstParagraph(text: string): string {
 
 function headingBlock(line: string): { text: string; level: "Heading1" | "Heading2" } | undefined {
   const t = (line || "").trim();
-  if (!t || t.length > 90) return undefined;
+  if (!t) return undefined;
   const known = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+work|appendix|appendices|acknowledgements?)\b/i;
   if (known.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
+  if (t.length > 90) return undefined;
   if (/^[IVXLCDM]+[\.\)]?\s+\S/.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading1" };
   if (/^[A-Z][.)]\s+\S/.test(t)) return { text: t.replace(/\s+/g, " ").trim(), level: "Heading2" };
   return undefined;
@@ -65,17 +66,21 @@ function blockEnd(lines: string[], start: number): number {
   return lines.length;
 }
 
-/** Extract author names from content lines that look like "Author: ..." metadata. */
-function authorsFromContent(lines: string[], beforeIdx: number): string[] {
-  const out: string[] = [];
+/** Extract author names + affiliation from content lines like "Author: ...", "Department: ...". */
+function authorsFromContent(lines: string[], beforeIdx: number): { authors: string[]; affiliation: string } {
+  const authors: string[] = [];
+  const affiliationParts: string[] = [];
   for (let i = 0; i < beforeIdx; i++) {
     const l = lines[i];
-    if (/^author\b/i.test(l)) {
-      const v = l.replace(/^author\b[:\-]?\s*/i, "").trim();
-      if (v) out.push(v);
+    const m = l.match(/^(author|department|institution|university|affiliation|author affiliation)\b[:\-]?\s*(.*)$/i);
+    if (m) {
+      const v = (m[2] || "").trim();
+      if (!v) continue;
+      if (/^(author|author affiliation)/i.test(m[1])) authors.push(v);
+      else affiliationParts.push(v);
     }
   }
-  return out;
+  return { authors, affiliation: affiliationParts.filter(Boolean).join(", ") };
 }
 
 /** First author surname of a IEEE-style reference line, e.g. "[1] A. L. Buczak and E. Guven, ...". */
@@ -104,29 +109,38 @@ export async function generateIeeeDocx(content: string, meta: IeeeMeta = {}): Pr
   const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
   const first = firstParagraph(text);
   const title = ((meta.title && meta.title.trim()) || first || "Untitled research paper").trim().slice(0, 300);
-  const authors =
+  const authorInfo =
     meta.authors && meta.authors.length
-      ? meta.authors.map((a) => String(a).trim()).filter(Boolean).slice(0, 20)
+      ? { authors: meta.authors.map((a) => String(a).trim()).filter(Boolean).slice(0, 20), affiliation: "" }
       : authorsFromContent(lines, lines.findIndex((l) => /^abstract\b/i.test(l)));
+  const authors = authorInfo.authors;
+  const affiliation = authorInfo.affiliation;
   const keywords =
     meta.keywords && meta.keywords.length
       ? meta.keywords.map((k) => String(k).trim()).filter(Boolean).slice(0, 15)
       : (() => {
-          const kwIdx = lines.findIndex((l) => /^(keywords?|index\s+terms?)\b/i.test(l));
-          if (kwIdx < 0) return [];
-          const end = blockEnd(lines, kwIdx + 1);
           const out: string[] = [];
-          for (let i = kwIdx + 1; i < end; i++) out.push(lines[i]);
+          const kwIdx = lines.findIndex((l) => /^(keywords?|index\s+terms?)\b/i.test(l));
+          if (kwIdx >= 0) {
+            const raw = lines[kwIdx].replace(/^(keywords?|index\s+terms?)[—–-]?\s*:?\s*/i, "").trim();
+            if (raw) out.push(raw);
+            const end = blockEnd(lines, kwIdx + 1);
+            for (let i = kwIdx + 1; i < end; i++) out.push(lines[i]);
+          }
           return out;
         })();
-  const abstract = (meta.abstract && meta.abstract.trim()) || firstParagraph(text);
+  const absHeadingIdx = lines.findIndex((l) => /^abstract\b/i.test(l));
+  const abstract =
+    (meta.abstract && meta.abstract.trim()) ||
+    (absHeadingIdx >= 0 ? lines.slice(absHeadingIdx + 1, blockEnd(lines, absHeadingIdx + 1)).join(" ").trim() : firstParagraph(text));
 
   const frontMatter: Paragraph[] = [
     para(title, { heading: "Title", size: 36, bold: true, alignment: "center" }),
   ];
   if (authors.length) frontMatter.push(para(authors.join(", "), { size: 22, bold: true, alignment: "center" }));
+  if (affiliation) frontMatter.push(para(affiliation, { size: 16, alignment: "center" }));
   if (abstract) frontMatter.push(para(`ABSTRACT— ${abstract}`, { size: 20, italics: true, alignment: "both" }));
-  const keywordLine = keywords.length ? `INDEX TERMS— ${keywords.join("; ")}.` : undefined;
+  const keywordLine = keywords.length ? `INDEX TERMS— ${keywords.join("; ").replace(/[\s.]+$/, "")}.` : undefined;
   if (keywordLine) frontMatter.push(para(keywordLine, { size: 20, alignment: "both" }));
 
   /* Body: everything after the abstract / keywords regions, grouped into
@@ -166,7 +180,7 @@ export async function generateIeeeDocx(content: string, meta: IeeeMeta = {}): Pr
       flush();
       cur = { heading: hb.text, level: hb.level, paras: [] };
     } else {
-      cur.paras.push(cite(line));
+      cur.paras.push(/^\[/.test(line) ? line : cite(line));
     }
   }
   flush();
