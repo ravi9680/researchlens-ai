@@ -1,0 +1,95 @@
+% !BIB program = bibtex
+%
+% ============================================================================
+%  ResearchLens AI — IEEE Conference Paper Template
+% ============================================================================
+%  Ready-to-use IEEE conference paper layout based on the official IEEEtran
+%  LaTeX class documentation:
+%
+%    "How to Use the IEEEtran LATEX Templates", IEEE Publication Technology,
+%    IEEE Journal of LaTeX Class Files, Vol. 18, No. 9, September 2020.
+%
+%  Document class for a conference paper:
+%      \documentclass[conference]{IEEEtran}
+%  Computer Society conference paper:
+%      \documentclass[conference,compsoc]{IEEEtran}
+%  Communications Society journal/conference:
+%      \documentclass[journal,comsoc]{IEEEtran}
+%  Technical note / correspondence:
+%      \documentclass[9pt,technote]{IEEEtran}
+%
+%  IEEE template selector (conference-specific variants + MS Word):
+%      https://template-selector.ieee.org/
+% ============================================================================
+
+\documentclass[conference]{IEEEtran}
+
+% ----- Packages used by the IEEEtran conference format -----
+\usepackage{cite}                          % numeric citations: \cite{x} -> [x]
+\usepackage{amsmath,amssymb,amsfonts}     % mathematics
+\usepackage{amsthm}                         % theorem / lemma / proof environments
+\usepackage{algorithmic}                   % pseudocode algorithms
+\usepackage{graphicx}                      % figures
+\usepackage{textcomp}                      % special characters
+\usepackage{xcolor}                        % figure colouring
+\usepackage[hidelinks]{hyperref}          % hyperlinks (optional)
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{The Title of Your Paper}
+
+\author{
+\IEEEauthorblockN{First Author}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{University of Somewhere} \\
+City, Country \\
+first.author@example.com}
+\and
+\IEEEauthorblockN{Second Author}
+\IEEEauthorblockA{\textit{School of Engineering} \\
+\textit{University of Somewhere} \\
+City, Country \\
+second.author@example.com}
+}
+
+\maketitle
+
+\begin{abstract}
+One paragraph of roughly 150--250 words. State the problem, the approach you
+took, and the main result or contribution. Avoid equations and citations in
+the abstract.
+\end{abstract}
+
+\begin{IEEEkeywords}
+machine learning, research intelligence, similarity detection
+\end{IEEEkeywords}
+
+\section{Introduction}
+Your introduction here. ...
+
+\subsection{Motivation}
+Your motivation subsection here. ...
+
+\subsection{Contribution}
+Your contribution statements here. ...
+
+\section{Related Work}
+...
+
+\section{Methodology}
+...
+
+\section{Evaluation}
+...
+
+\section{Conclusion}
+...
+
+% ---- Bibliography ----
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

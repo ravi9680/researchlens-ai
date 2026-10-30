@@ -108,6 +108,34 @@ describe("route table", () => {
   });
 });
 
+describe("ieee format", () => {
+  const SAMPLE = "We study phishing url detection with lexical features and gradient boosting. ".repeat(10);
+
+  it("rejects content that is too short", async () => {
+    const res = await authed("/ieee/format", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "tiny", meta: {} }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns a docx binary for valid content", async () => {
+    const res = await authed("/ieee/format", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: SAMPLE,
+        meta: { title: "Sample Paper", authors: ["A. Author"], keywords: ["phishing"], abstract: "We study phishing." },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(String(res.headers.get("content-type") || "")).toContain("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const buf = await res.arrayBuffer();
+    expect(buf.byteLength).toBeGreaterThan(1000);
+  });
+});
+
 describe("auth", () => {
   it("mints a usable guest identity", async () => {
     const res = await fetch(`${base}/auth/guest`, { method: "POST" });

@@ -9,7 +9,8 @@ import { all, get, run } from "./db.js";
 import { config } from "./config.js";
 import { runAnalysis, getReport, STALE_AFTER_MS } from "./services/pipeline.js";
 import { cosine, jaccard, tokenize } from "./services/textUtils.js";
-import { detectTopics, extractKeywords } from "./services/documentParser.js";
+import { detectTopics, extractKeywords, extractText } from "./services/documentParser.js";
+import { generateIeeeDocx } from "./services/ieeeFormat.js";
 import { cEngineInfo, cGraph, cEngineAvailable } from "./services/cEngine.js";
 import { startIngestJob, MAX_INGEST_COUNT } from "./services/ingestion.js";
 import { literatureReviewOutline } from "./services/gaps.js";
@@ -416,6 +417,57 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
   } catch (e: any) {
     audit("security.upload_rejected", clientIp(req), { reason: String(e?.message || e).slice(0, 120) });
     res.status(400).json({ error: e.message });
+  }
+});
+
+/* ================================================================
+   IEEE FORMAT — raw research content → IEEE conference paper (DOCX)
+   ================================================================ */
+
+const ieeeMetaSchema = z.object({
+  title: z.string().max(300).optional().default(""),
+  authors: z.array(z.string().max(200)).max(20).optional().default([]),
+  keywords: z.array(z.string().max(80)).max(15).optional().default([]),
+  abstract: z.string().max(4000).optional().default(""),
+});
+
+function setIeeeDocxHeaders(res: any, title: string) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const slug = (title || "research-paper").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "research-paper";
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  res.setHeader("Content-Disposition", `attachment; filename="ieee-paper-${slug}-${stamp}.docx"`);
+}
+
+/** JSON variant: the client sends the raw content of the paper plus metadata. */
+router.post("/ieee/format", auth, async (req, res) => {
+  try {
+    const s = ieeeMetaSchema.safeParse(req.body);
+    if (!s.success) return res.status(400).json({ error: "Invalid input" });
+    const content = String((req.body as any)?.content || "").trim();
+    if (content.length < 40) return res.status(400).json({ error: "Please provide the research paper content first (a few words are enough to start)." });
+    const buf = await generateIeeeDocx(content, s.data);
+    setIeeeDocxHeaders(res, s.data.title || "paper");
+    return res.status(200).send(buf);
+  } catch (e: any) {
+    return res.status(400).json({ error: e?.message || "Could not prepare the IEEE paper." });
+  }
+});
+
+/** Upload variant: the client sends a .txt / .pdf / .docx file with optional metadata fields. */
+router.post("/ieee/format/upload", auth, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file" });
+    const content = await extractText(req.file.path, req.file.mimetype, req.file.originalname);
+    const buf = await generateIeeeDocx(content, {
+      title: typeof req.body?.title === "string" ? req.body.title : undefined,
+      authors: Array.isArray(req.body?.authors) ? req.body.authors : String(req.body?.authors || "").split(/[\n,;]+/),
+      keywords: Array.isArray(req.body?.keywords) ? req.body.keywords : String(req.body?.keywords || "").split(/[,;]+/),
+      abstract: typeof req.body?.abstract === "string" ? req.body.abstract : undefined,
+    });
+    setIeeeDocxHeaders(res, String(req.body?.title || "paper"));
+    return res.status(200).send(buf);
+  } catch (e: any) {
+    return res.status(400).json({ error: e?.message || "Could not prepare the IEEE paper." });
   }
 });
 

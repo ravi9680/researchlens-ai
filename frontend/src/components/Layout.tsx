@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Upload, MessagesSquare, TrendingUp, Settings as SettingsIcon, Sparkles,
   BookOpen, Cpu, Sun, Moon, LogOut, User, Shield, Bookmark, Network, BookMarked, Menu, X,
-  ShieldCheck, Command,
+  ShieldCheck, Command, FileText,
 } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -12,6 +12,7 @@ const LINKS = [
   { to: "/app/upload", label: "Upload", icon: Upload, group: "Workspace" },
   { to: "/app/explorer", label: "Explorer", icon: BookOpen, group: "Workspace" },
   { to: "/app/saved", label: "Saved", icon: Bookmark, group: "Workspace" },
+  { to: "/app/ieee-format", label: "IEEE Format", icon: FileText, group: "Workspace" },
   { to: "/app/chat", label: "Chat", icon: MessagesSquare, group: "Explore" },
   { to: "/app/graph", label: "Graph", icon: Network, group: "Explore" },
   { to: "/app/review", label: "Review", icon: BookMarked, group: "Explore" },
@@ -26,7 +27,7 @@ const GROUPS = ["Overview", "Workspace", "Explore", "Reference"];
 const TITLES: Record<string, string> = {
   "/app": "Dashboard", "/app/upload": "Upload paper", "/app/explorer": "Research explorer",
   "/app/saved": "Saved papers", "/app/chat": "Research chat", "/app/graph": "Citation graph",
-  "/app/review": "Literature review", "/app/trends": "Research trends",
+  "/app/review": "Literature review", "/app/ieee-format": "IEEE paper formatter", "/app/trends": "Research trends",
   "/app/algorithms": "Algorithms", "/app/security": "Security", "/app/settings": "Settings",
 };
 

@@ -137,6 +137,7 @@ describe("every page renders without crashing", () => {
     ["Processing", async () => { const m = await import("./pages/Processing"); return <m.Processing />; }],
     ["Chat", async () => { const m = await import("./pages/ChatReview"); return <m.Chat />; }],
     ["SimilarPapers", async () => { const m = await import("./pages/SimilarGaps"); return <m.SimilarPapers />; }],
+    ["IeeeFormat", async () => { const m = await import("./pages/IeeeFormat"); return <m.IeeeFormat />; }],
   ];
 
   for (const [name, load] of pages) {

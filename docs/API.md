@@ -20,6 +20,8 @@ an `X-Request-Id` header (also present in the server log for that request).
 | GET | /documents/:id/status | + `elapsedMs`, `stale` (stage has not advanced for >45s) and `canRetry` — the UI uses these to stop showing an endless progress bar |
 | POST | /documents/:id/retry | Re-runs an analysis that failed or stalled; the uploaded file is kept on disk so nothing has to be re-uploaded (409 if already DONE) |
 | GET | /documents/:id/export | Finished report as a downloadable JSON file (Content-Disposition attachment) |
+| POST | /ieee/format/upload (multipart `file`) | Raw content (.txt/.pdf/.docx) → downloadable **IEEE conference paper** (.docx attachment). Optional text fields: title, authors, keywords, abstract |
+| POST | /ieee/format `{content,meta}` | Raw content + metadata → same IEEE .docx export (pasted text path) |
 | DELETE | /documents/:id | Delete own analysis (owner or admin; 404 if not yours) |
 | GET | /papers?search&topic&sort&page | sort: relevance/year/citations. Relevance is a real weighted score (title ≫ abstract, citations as a light tie-break). Topic filters through the `paper_topics` relation. Never returns `full_text` |
 | GET | /papers/:id | + authors, chunk excerpts. Never returns `full_text` |

@@ -27,6 +27,7 @@ A student uploads a research paper (**PDF / DOCX / TXT**). The platform analyses
 | 📈 Trends & citation graph | Year/topic charts, BFS·PageRank-powered interactive graph |
 | 🔬 Compare & ingest | Pairwise paper comparison, live OpenAlex ingestion with citation linking |
 | 🛡️ Security posture | Live view of the deployment's own hardening configuration |
+| 📝 IEEE formatter | Paste or upload raw research content (TXT / PDF / DOCX) → get back a fully formatted **IEEE conference paper** (.docx) |
 
 ## Screenshots
 
@@ -153,6 +154,7 @@ Copy `.env.example` → `backend/.env`. Demo mode needs zero keys.
 | `docs/API.md` | Every endpoint + report shape |
 | `docs/AI_ANALYSIS.md` | Honesty contract (similarity, AI signals, grounding) |
 | `docs/DSA_IMPLEMENTATION.md` | Every DS/algorithm: complexity, examples, viva notes |
+| `docs/templates/ieee_conference.tex` | Ready-to-use **IEEE conference paper template** (LaTeX + BibTeX) |
 
 ## Honesty contract
 

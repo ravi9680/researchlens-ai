@@ -21,6 +21,7 @@ import { GraphLab } from "./pages/GraphLab";
 import { Compare } from "./pages/Compare";
 import { Review } from "./pages/Review";
 import { Security } from "./pages/Security";
+import { IeeeFormat } from "./pages/IeeeFormat";
 
 // Error boundary to prevent one crash from taking down the whole app
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -77,6 +78,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="graph" element={<GraphLab />} />
               <Route path="compare" element={<Compare />} />
               <Route path="review" element={<Review />} />
+              <Route path="ieee-format" element={<IeeeFormat />} />
               <Route path="saved" element={<Saved />} />
               <Route path="algorithms" element={<Algorithms />} />
               <Route path="security" element={<Security />} />

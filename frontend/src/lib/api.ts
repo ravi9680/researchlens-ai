@@ -184,4 +184,22 @@ export const api = {
       body: JSON.stringify({ topic, paperIds }),
     }).then(j),
   algorithms: () => fetch(`${BASE}/api/algorithms`).then(j),
+
+  /* ---- IEEE format export: raw content -> IEEE conference paper (.docx) ---- */
+  ieeeFormat: async (content: string, meta: any = {}) => {
+    return api.req(`/api/ieee/format`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, meta }),
+    });
+  },
+  ieeeFormatFile: async (f: File, meta: any = {}) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    if (meta.title) fd.append("title", String(meta.title));
+    if (meta.authors) fd.append("authors", String(meta.authors));
+    if (meta.keywords) fd.append("keywords", String(meta.keywords));
+    if (meta.abstract) fd.append("abstract", String(meta.abstract));
+    return api.req(`/api/ieee/format/upload`, { method: "POST", body: fd });
+  },
 };
