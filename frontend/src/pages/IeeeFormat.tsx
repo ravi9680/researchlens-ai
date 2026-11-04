@@ -22,12 +22,23 @@ function buildIeeePrintHtml(content: string, meta: { title: string; authors: str
   const authorsTxt = meta.authors.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean).join(", ") || "Author";
   const keywordsTxt = meta.keywords.split(/[,;]+/).map((s) => s.trim()).filter(Boolean).join(", ") || "research";
   const abstractTxt = meta.abstract.trim() || firstPara(content);
-  const paras = content
-    .split(/\n\s*\n/)
-    .map((b) => b.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .flatMap((b) => b.split("\n").map((l) => l.trim()).filter(Boolean));
-  const body = paras.map((p) => `<p>${escapeHtml(p)}</p>`).join("\n");
+  const lines = content
+    .split(/\r\n|\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const romanMain = /^((?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII)[.)]?\s+[A-Z])/i;
+  const isKnownHeading = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+(work|scope)|appendix|appendices|acknowledgements?|research\s+gap|problem\s+statement|implementation)\b/i;
+  const start = lines.findIndex((l) => romanMain.test(l));
+  const body = lines
+    .slice(start >= 0 ? start : 0)
+    .map((p) => {
+      const t = p.trim();
+      if (romanMain.test(t)) return `<h2>${escapeHtml(t)}</h2>`;
+      if (/^[A-Z][.)]\s+\S/.test(t)) return `<h3>${escapeHtml(t)}</h3>`;
+      if (isKnownHeading.test(t)) return `<h2>${escapeHtml(t)}</h2>`;
+      return `<p>${escapeHtml(t)}</p>`;
+    })
+    .join("\n");
 
   return `<!doctype html>
 <html>
@@ -45,14 +56,16 @@ function buildIeeePrintHtml(content: string, meta: { title: string; authors: str
   .kws { font-size: 10.5pt; margin-bottom: 12pt; }
   .body { column-count: 2; column-gap: 12mm; text-align: justify; }
   p { margin: 0 0 8pt; text-align: justify; break-after: avoid; }
+  h2 { font-size: 12pt; margin: 12pt 0 6pt; text-align: justify; }
+  h3 { font-size: 11pt; margin: 10pt 0 4pt; text-align: justify; }
 </style>
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
   <div class="authors">${escapeHtml(authorsTxt)}</div>
-  <div class="lbl">Abstract</div>
+  <div class="lbl">ABSTRACT—</div>
   <div class="abs">${escapeHtml(abstractTxt)}</div>
-  <div class="lbl">Index Terms</div>
+  <div class="lbl">INDEX TERMS—</div>
   <div class="kws">${escapeHtml(keywordsTxt)}</div>
   <div class="body">${body}</div>
 </body>
