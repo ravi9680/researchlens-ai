@@ -246,36 +246,27 @@
     if (!blocks.length) { paper.warnings.push("No readable text found."); return paper; }
 
     let i = 0; const n = blocks.length;
-    paper.title = blocks[0].text.trim().replace(/^(title|paper\s*title)\s*[:\-–—]\s*/i, "").trim(); i = 1;
+    paper.title = blocks[0].text.trim(); i = 1;
 
     const authorLines = [];
     while (i < n && !ABSTRACT_RE.test(blocks[i].text)) {
       const t = blocks[i].text.trim();
       if (REFERENCES_RE.test(t) || NUM_HEADING_RE.test(t)) break;
-      if (/^(keywords?|index\s*terms?)\b/i.test(t)) break;
       if (authorLines.length && looksLikeHeading(t)) break;
       authorLines.push(t); i++;
-      if (authorLines.length >= 6) break;
+      if (authorLines.length >= 4) break;
     }
-    const cleanAuthorLines = authorLines
-      .map((l) => l.replace(/^(authors?|author\s*names?|by)\s*[:\-–—]\s*/i, "").trim())
-      .filter((l) => l && !/^(authors?|author\s*names?)$/i.test(l));
-    if (cleanAuthorLines.length) {
-      const first = cleanAuthorLines[0];
+    if (authorLines.length) {
+      const first = authorLines[0];
       let namePart = first, gluedAffil = "";
       const m = AFFIL_KEYWORDS_RE.exec(first);
       if (m) { namePart = first.slice(0, m.index).replace(/[ ,;]+$/, ""); gluedAffil = first.slice(m.index).trim(); }
-      const names = namePart.split(/,|;|\band\b/).map((nm) => nm.trim()).filter(Boolean);
-      const looksAffil = (s) => AFFIL_KEYWORDS_RE.test(s) || /@/.test(s) || /\b(india|usa|uk|germany|china|university|institute|college|department|school|lab|laboratory)\b/i.test(s);
-      if (names.length === 1 && looksAffil(names[0])) {
-        paper.authors.push({ name: names[0], affiliation: "", email: "" });
-      } else {
-        for (const nm of names) paper.authors.push({ name: nm, affiliation: "", email: "" });
+      for (let nm of namePart.split(/,| and /)) {
+        nm = nm.trim();
+        if (nm) paper.authors.push({ name: nm, affiliation: "", email: "" });
       }
-      const affil = [gluedAffil].concat(cleanAuthorLines.slice(1)).join(" ").trim();
-      if (affil && paper.authors.length) paper.authors.forEach((a) => (a.affiliation = affil));
-      // If we accidentally put the only name as affiliation-like, try to recover
-      if (paper.authors.length === 1 && /^authors?$/i.test(paper.authors[0].name)) paper.authors = [];
+      const affil = [gluedAffil].concat(authorLines.slice(1)).join(" ").trim();
+      if (affil) paper.authors.forEach((a) => (a.affiliation = affil));
     }
 
     if (i < n && ABSTRACT_RE.test(blocks[i].text)) {
@@ -601,27 +592,8 @@
     return out;
   }
 
-  async function ensureDocx() {
-    if (window.docx && window.docx.Document) return window.docx;
-    const srcs = [
-      "https://unpkg.com/docx@8.5.0/build/index.umd.js",
-      "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"
-    ];
-    for (const src of srcs) {
-      try {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
-          document.head.appendChild(s);
-        });
-        if (window.docx && window.docx.Document) return window.docx;
-      } catch {}
-    }
-    throw new Error("Word export library (docx.js) failed to load. Check your internet connection and try again.");
-  }
-
-  async function buildDocx(paper, publisher) {
-    const D = await ensureDocx();
+  function buildDocx(paper, publisher) {
+    const D = window.docx;
     const { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, convertInchesToTwip } = D;
     const FONT = "Times New Roman";
 
@@ -1091,43 +1063,15 @@
     document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
-  function printHtml(html, onBlocked) {
-    const clean = html.replace(/<script>window\.onload=function\(\)\{setTimeout\(function\(\)\{window\.print\(\);\},150\);\};<\/script>/, "");
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0"; iframe.style.bottom = "0";
-    iframe.style.width = "0"; iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.setAttribute("aria-hidden", "true");
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open(); doc.write(clean); doc.close();
-    const win = iframe.contentWindow;
-    const cleanup = () => setTimeout(() => { try { iframe.remove(); } catch {} }, 1500);
-    if (!win) { iframe.remove(); onBlocked && onBlocked(); return; }
-    setTimeout(() => { try { win.focus(); win.print(); } catch { onBlocked && onBlocked(); } cleanup(); }, 350);
-  }
-
-  // tabs / page navigation
-  function activateTab(id, pushHash = true) {
-    const btn = document.querySelector(`.tab[data-tab="${id}"]`);
-    if (!btn) return;
-    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    const panel = $(id);
-    if (panel) panel.classList.add("active");
-    if (pushHash) location.hash = id;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  // tabs
   document.querySelectorAll(".tab").forEach((btn) => {
-    btn.addEventListener("click", () => activateTab(btn.dataset.tab));
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      $(btn.dataset.tab).classList.add("active");
+    });
   });
-  window.addEventListener("hashchange", () => {
-    const id = (location.hash || "#convert").replace("#", "");
-    activateTab(id, false);
-  });
-  activateTab((location.hash || "#convert").replace("#", ""), false);
 
   // ---- converter ----
   let convPaper = null;
@@ -1178,8 +1122,10 @@
       if (!paper) { convStatus("Add a file or paste some text first.", "warn"); return; }
       const name = paperStem(paper) + "_" + publisher();
       const html = renderPdfDoc(paper, publisher(), name);
-      printHtml(html, () => convStatus("Could not open print dialog. Please allow printing for this site.", "warn"));
-      convStatus('Print dialog opened — choose "Save as PDF" as the destination. ' + summary(paper), "ok");
+      const w = window.open("", "_blank");
+      if (!w) { convStatus("Pop-up blocked — allow pop-ups for this site to export PDF.", "warn"); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+      convStatus('PDF ready — choose "Save as PDF" in the print dialog. ' + summary(paper), "ok");
     } catch (e) { convStatus("Error: " + e.message, "warn"); console.error(e); }
   });
 
@@ -1439,8 +1385,10 @@
       renderPreview(article);
       const name = thStem(article) + "_" + thPublisher();
       const html = renderPdfDoc(article, thPublisher(), name);
-      printHtml(html, () => thStatus("Could not open print dialog. Please allow printing for this site.", "warn"));
-      thStatus('Print dialog opened — choose "Save as PDF" as the destination.', "ok");
+      const w = window.open("", "_blank");
+      if (!w) { thStatus("Pop-up blocked — allow pop-ups for this site to export PDF.", "warn"); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+      thStatus('PDF ready — choose "Save as PDF" in the print dialog.', "ok");
     } catch (e) { thStatus("Error: " + e.message, "warn"); console.error(e); }
   });
 
@@ -1522,7 +1470,7 @@
   });
 
   // expose for quick console/testing
-  window.ResearchLensAI = {
+  window.ResearchLens AI = {
     humanizeText, buildPaper, textToBlocks, renderLatex, optionsForLevel,
     thesisToArticle, ARTICLE_TEMPLATES, setThesisLLM, checkPaper, detectAILanguage,
   };
