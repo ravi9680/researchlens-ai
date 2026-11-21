@@ -1481,7 +1481,7 @@
   });
 
   // expose for quick console/testing
-  window.ResearchLens AI = {
+  window.ResearchLensAI = {
     humanizeText, buildPaper, textToBlocks, renderLatex, optionsForLevel,
     thesisToArticle, ARTICLE_TEMPLATES, setThesisLLM, checkPaper, detectAILanguage,
   };
