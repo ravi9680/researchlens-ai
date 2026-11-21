@@ -246,27 +246,36 @@
     if (!blocks.length) { paper.warnings.push("No readable text found."); return paper; }
 
     let i = 0; const n = blocks.length;
-    paper.title = blocks[0].text.trim(); i = 1;
+    paper.title = blocks[0].text.trim().replace(/^(title|paper\s*title)\s*[:\-–—]\s*/i, "").trim(); i = 1;
 
     const authorLines = [];
     while (i < n && !ABSTRACT_RE.test(blocks[i].text)) {
       const t = blocks[i].text.trim();
       if (REFERENCES_RE.test(t) || NUM_HEADING_RE.test(t)) break;
+      if (/^(keywords?|index\s*terms?)\b/i.test(t)) break;
       if (authorLines.length && looksLikeHeading(t)) break;
       authorLines.push(t); i++;
-      if (authorLines.length >= 4) break;
+      if (authorLines.length >= 6) break;
     }
-    if (authorLines.length) {
-      const first = authorLines[0];
+    const cleanAuthorLines = authorLines
+      .map((l) => l.replace(/^(authors?|author\s*names?|by)\s*[:\-–—]\s*/i, "").trim())
+      .filter((l) => l && !/^(authors?|author\s*names?)$/i.test(l));
+    if (cleanAuthorLines.length) {
+      const first = cleanAuthorLines[0];
       let namePart = first, gluedAffil = "";
       const m = AFFIL_KEYWORDS_RE.exec(first);
       if (m) { namePart = first.slice(0, m.index).replace(/[ ,;]+$/, ""); gluedAffil = first.slice(m.index).trim(); }
-      for (let nm of namePart.split(/,| and /)) {
-        nm = nm.trim();
-        if (nm) paper.authors.push({ name: nm, affiliation: "", email: "" });
+      const names = namePart.split(/,|;|\band\b/).map((nm) => nm.trim()).filter(Boolean);
+      const looksAffil = (s) => AFFIL_KEYWORDS_RE.test(s) || /@/.test(s) || /\b(india|usa|uk|germany|china|university|institute|college|department|school|lab|laboratory)\b/i.test(s);
+      if (names.length === 1 && looksAffil(names[0])) {
+        paper.authors.push({ name: names[0], affiliation: "", email: "" });
+      } else {
+        for (const nm of names) paper.authors.push({ name: nm, affiliation: "", email: "" });
       }
-      const affil = [gluedAffil].concat(authorLines.slice(1)).join(" ").trim();
-      if (affil) paper.authors.forEach((a) => (a.affiliation = affil));
+      const affil = [gluedAffil].concat(cleanAuthorLines.slice(1)).join(" ").trim();
+      if (affil && paper.authors.length) paper.authors.forEach((a) => (a.affiliation = affil));
+      // If we accidentally put the only name as affiliation-like, try to recover
+      if (paper.authors.length === 1 && /^authors?$/i.test(paper.authors[0].name)) paper.authors = [];
     }
 
     if (i < n && ABSTRACT_RE.test(blocks[i].text)) {
