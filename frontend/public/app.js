@@ -1063,15 +1063,26 @@
     document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
-  // tabs
+  // tabs / page navigation
+  function activateTab(id, pushHash = true) {
+    const btn = document.querySelector(`.tab[data-tab="${id}"]`);
+    if (!btn) return;
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    const panel = $(id);
+    if (panel) panel.classList.add("active");
+    if (pushHash) location.hash = id;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   document.querySelectorAll(".tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      $(btn.dataset.tab).classList.add("active");
-    });
+    btn.addEventListener("click", () => activateTab(btn.dataset.tab));
   });
+  window.addEventListener("hashchange", () => {
+    const id = (location.hash || "#convert").replace("#", "");
+    activateTab(id, false);
+  });
+  activateTab((location.hash || "#convert").replace("#", ""), false);
 
   // ---- converter ----
   let convPaper = null;
