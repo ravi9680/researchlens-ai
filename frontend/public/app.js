@@ -1063,6 +1063,28 @@
     document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
+  function printHtml(html, onBlocked) {
+    const clean = html.replace(/<script>window\.onload=function\(\)\{setTimeout\(function\(\)\{window\.print\(\);\},150\);\};<\/script>/, "");
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open(); doc.write(clean); doc.close();
+    const win = iframe.contentWindow;
+    const cleanup = () => setTimeout(() => { try { iframe.remove(); } catch {} }, 1500);
+    if (!win) { iframe.remove(); onBlocked && onBlocked(); return; }
+    setTimeout(() => {
+      try { win.focus(); win.print(); } catch { onBlocked && onBlocked(); }
+      cleanup();
+    }, 350);
+  }
+
   // tabs / page navigation
   function activateTab(id, pushHash = true) {
     const btn = document.querySelector(`.tab[data-tab="${id}"]`);
@@ -1133,10 +1155,8 @@
       if (!paper) { convStatus("Add a file or paste some text first.", "warn"); return; }
       const name = paperStem(paper) + "_" + publisher();
       const html = renderPdfDoc(paper, publisher(), name);
-      const w = window.open("", "_blank");
-      if (!w) { convStatus("Pop-up blocked — allow pop-ups for this site to export PDF.", "warn"); return; }
-      w.document.open(); w.document.write(html); w.document.close();
-      convStatus('PDF ready — choose "Save as PDF" in the print dialog. ' + summary(paper), "ok");
+      printHtml(html, () => convStatus("Could not open print dialog. Please allow printing for this site.", "warn"));
+      convStatus('PDF print dialog opened — choose "Save as PDF" in the destination. ' + summary(paper), "ok");
     } catch (e) { convStatus("Error: " + e.message, "warn"); console.error(e); }
   });
 
@@ -1396,10 +1416,8 @@
       renderPreview(article);
       const name = thStem(article) + "_" + thPublisher();
       const html = renderPdfDoc(article, thPublisher(), name);
-      const w = window.open("", "_blank");
-      if (!w) { thStatus("Pop-up blocked — allow pop-ups for this site to export PDF.", "warn"); return; }
-      w.document.open(); w.document.write(html); w.document.close();
-      thStatus('PDF ready — choose "Save as PDF" in the print dialog.', "ok");
+      printHtml(html, () => thStatus("Could not open print dialog. Please allow printing for this site.", "warn"));
+      thStatus('PDF print dialog opened — choose "Save as PDF" in the destination.', "ok");
     } catch (e) { thStatus("Error: " + e.message, "warn"); console.error(e); }
   });
 
