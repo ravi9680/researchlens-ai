@@ -1,1 +1,288 @@
-<!doctype html><html lang="en" class="dark"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>ResearchLens AI — Research Intelligence</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ResearchLens AI — Paper Formatter & Text Humanizer</title>
+<meta name="description" content="Convert papers to IEEE, Springer, and Elsevier format, turn a thesis into a journal article, and rewrite AI-sounding text into plainer language. Runs entirely in your browser." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+<link rel="stylesheet" href="style.css?v=4" />
+</head>
+<body>
+<header>
+  <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
+  <div class="brand">
+    <span class="logo">PF</span>
+    <div>
+      <h1>ResearchLens AI</h1>
+      <p class="subtitle">Academic paper formatter &amp; text humanizer</p>
+    </div>
+  </div>
+  <p class="tagline">Format papers for <strong>IEEE</strong>, <strong>Springer</strong> &amp; <strong>Elsevier</strong>, condense a <strong>thesis into a journal article</strong>, and rewrite AI-sounding text into plain language. Everything runs in your browser; nothing is uploaded.</p>
+  <ul class="chips">
+    <li>100% in-browser</li>
+    <li>No sign-up</li>
+    <li>Thesis → Article</li>
+    <li>Word · PDF · LaTeX</li>
+    <li>Privacy-first</li>
+    <li>Free &amp; open source</li>
+  </ul>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="convert">Format Converter</button>
+  <button class="tab" data-tab="thesis">Thesis → Article</button>
+  <button class="tab" data-tab="check">Paper Check</button>
+  <button class="tab" data-tab="humanize">AI → Human</button>
+  <button class="tab" data-tab="howto">How to Use</button>
+  <button class="tab" data-tab="about">About</button>
+</nav>
+
+<!-- ================= CONVERTER ================= -->
+<section id="convert" class="panel active">
+  <div class="card">
+    <h2><span class="step-no">1</span> Input</h2>
+    <p class="hint">Upload a <code>.docx</code>, <code>.txt</code>, or <code>.md</code> file, or paste your paper below.
+      <br>Reading <em>existing</em> PDF files as input needs the desktop version (see footer).</p>
+    <input type="file" id="conv-file" accept=".docx,.txt,.md,.markdown,.tex" />
+    <textarea id="conv-text" rows="10" placeholder="…or paste your paper text here.
+First line = title. Then authors, then 'Abstract', 'Keywords:', numbered sections, and 'References'."></textarea>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">2</span> Publisher</h2>
+    <div class="seg">
+      <label><input type="radio" name="pub" value="ieee" checked /> IEEE</label>
+      <label><input type="radio" name="pub" value="springer" /> Springer (LNCS)</label>
+      <label><input type="radio" name="pub" value="elsevier" /> Elsevier</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">3</span> Convert &amp; download</h2>
+    <div class="row">
+      <button id="btn-docx" class="primary">Download Word (.docx)</button>
+      <button id="btn-pdf" class="primary">Download PDF</button>
+      <button id="btn-tex" class="primary">Download LaTeX (.tex)</button>
+    </div>
+    <p class="hint">PDF opens a print view — choose <strong>“Save as PDF”</strong> as the destination. Allow pop-ups if nothing opens.
+      <br>Tip: for a publisher-perfect PDF, open the <code>.tex</code> on <a href="https://overleaf.com" target="_blank" rel="noopener">Overleaf</a> (free).</p>
+    <div id="conv-status" class="status"></div>
+  </div>
+</section>
+
+<!-- ================= THESIS → ARTICLE ================= -->
+<section id="thesis" class="panel">
+  <div class="card">
+    <h2><span class="step-no">1</span> Your thesis or long paper</h2>
+    <p class="hint">Upload your full <code>.docx</code>, <code>.txt</code>, <code>.md</code>, or <code>.tex</code> thesis/dissertation, or paste it below.
+      Chapters become article sections — so headings like <em>Introduction</em>, <em>Literature Review</em>, <em>Methodology</em>, <em>Results</em>, and <em>Conclusion</em> are detected and condensed.</p>
+    <input type="file" id="th-file" accept=".docx,.txt,.md,.markdown,.tex" />
+    <textarea id="th-text" rows="9" placeholder="…or paste your thesis text here.
+First line = title, then authors, then chapter headings (e.g. '1. Introduction', '2. Literature Review', …)."></textarea>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">2</span> Article format</h2>
+    <p class="hint">Pick a target article shape. The thesis content is mapped into these sections and shortened to article length.</p>
+    <div class="tpl-grid" id="th-templates"></div>
+
+    <p class="hint" style="margin-top:16px">Optional: <strong>upload a sample article</strong> (.docx/.txt/.md/.tex) and ResearchLens AI will mimic <em>its</em> section structure instead of a template.</p>
+    <input type="file" id="th-format-file" accept=".docx,.txt,.md,.markdown,.tex" />
+    <div id="th-format-status" class="status"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">3</span> How aggressively to condense</h2>
+    <div class="seg" id="th-level">
+      <label><input type="radio" name="thlevel" value="light" /> Light <span class="muted">(keep more)</span></label>
+      <label><input type="radio" name="thlevel" value="medium" checked /> Medium</label>
+      <label><input type="radio" name="thlevel" value="strong" /> Strong <span class="muted">(shortest)</span></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label><input type="checkbox" id="th-abstract" checked /> Generate an abstract if the thesis has none</label>
+      <label><input type="checkbox" id="th-humanize" /> Also plain-language the result</label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="th-preview" class="primary">Build article &amp; preview</button>
+    </div>
+    <div id="th-status" class="status"></div>
+    <div id="th-pv" class="preview"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">4</span> Publisher &amp; download</h2>
+    <p class="hint">Choose a publisher style for the finished article, then download.</p>
+    <div class="seg" id="th-pub">
+      <label><input type="radio" name="thpub" value="ieee" checked /> IEEE</label>
+      <label><input type="radio" name="thpub" value="springer" /> Springer (LNCS)</label>
+      <label><input type="radio" name="thpub" value="elsevier" /> Elsevier</label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="th-docx" class="primary">Download Word (.docx)</button>
+      <button id="th-pdf" class="primary">Download PDF</button>
+      <button id="th-tex" class="primary">Download LaTeX (.tex)</button>
+    </div>
+    <p class="hint">Always proofread — automatic condensing is best-effort. For a publisher-perfect PDF, open the <code>.tex</code> on <a href="https://overleaf.com" target="_blank" rel="noopener">Overleaf</a>.</p>
+  </div>
+</section>
+
+<!-- ================= PAPER CHECK ================= -->
+<section id="check" class="panel">
+  <div class="card">
+    <h2><span class="step-no">1</span> Your paper</h2>
+    <p class="hint">Upload a <code>.docx</code>, <code>.txt</code>, <code>.md</code>, or <code>.tex</code> file, or paste your paper.
+      ResearchLens AI reviews its <strong>structure, formatting, and language</strong> and gives you a checklist to fix — it never changes your file.</p>
+    <input type="file" id="chk-file" accept=".docx,.txt,.md,.markdown,.tex" />
+    <textarea id="chk-text" rows="9" placeholder="…or paste your paper here. First line = title, then authors, 'Abstract', 'Keywords:', numbered sections, and 'References'."></textarea>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">2</span> What to check</h2>
+    <p class="hint">Choose the target publisher so length and section checks match its expectations.</p>
+    <div class="seg" id="chk-pub">
+      <label><input type="radio" name="chkpub" value="ieee" checked /> IEEE</label>
+      <label><input type="radio" name="chkpub" value="springer" /> Springer (LNCS)</label>
+      <label><input type="radio" name="chkpub" value="elsevier" /> Elsevier</label>
+      <label><input type="radio" name="chkpub" value="generic" /> Generic</label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label><input type="checkbox" id="chk-ai" checked /> Also flag AI-sounding language</label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="chk-run" class="primary">Check my paper</button>
+    </div>
+    <div id="chk-status" class="status"></div>
+  </div>
+
+  <div class="card" id="chk-result-card" style="display:none">
+    <h2><span class="step-no">3</span> Review report</h2>
+    <div id="chk-report"></div>
+  </div>
+</section>
+
+<!-- ================= HUMANIZER ================= -->
+<section id="humanize" class="panel">
+  <div class="card">
+    <h2><span class="step-no">1</span> Text</h2>
+    <p class="hint">Paste text, or load a file and pick a paragraph.</p>
+    <input type="file" id="hum-file" accept=".docx,.txt,.md,.markdown,.tex" />
+    <select id="hum-para" class="hidden"></select>
+    <textarea id="hum-input" rows="8" placeholder="Paste the text you want to rewrite…"></textarea>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">2</span> Strength &amp; options</h2>
+    <div class="row">
+      <label><input type="radio" name="level" value="light" /> Light</label>
+      <label><input type="radio" name="level" value="medium" checked /> Medium</label>
+      <label><input type="radio" name="level" value="strong" /> Strong</label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="opt-vocab" checked /> Simplify words</label>
+      <label><input type="checkbox" id="opt-filler" checked /> Remove filler</label>
+      <label><input type="checkbox" id="opt-contractions" /> Contractions</label>
+      <label><input type="checkbox" id="opt-split" checked /> Split long sentences</label>
+    </div>
+    <button id="btn-humanize" class="primary">Humanize</button>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-no">3</span> Result <span id="hum-count" class="muted"></span></h2>
+    <textarea id="hum-output" rows="8" placeholder="Rewritten text appears here. Always review before using."></textarea>
+    <div class="row">
+      <button id="btn-copy">Copy</button>
+      <button id="btn-save-txt">Download .txt</button>
+    </div>
+    <p class="hint">This is a writing-improvement aid for your own drafts — not an AI-detector bypass.</p>
+  </div>
+</section>
+
+<!-- ================= HOW TO USE ================= -->
+<section id="howto" class="panel">
+  <div class="card">
+    <h2>Format a paper in 3 steps</h2>
+    <ol class="steps">
+      <li><strong>Add your paper.</strong> Upload a <code>.docx</code>, <code>.txt</code>, <code>.md</code>, or <code>.tex</code> file, or paste the text. The first line is read as the <em>title</em>, followed by authors, then <code>Abstract</code>, <code>Keywords:</code>, numbered sections, and <code>References</code>. Leave a blank line between each block for best results.</li>
+      <li><strong>Pick a publisher.</strong> Choose <strong>IEEE</strong>, <strong>Springer (LNCS)</strong>, or <strong>Elsevier</strong>. The layout, fonts, headings, and reference style match that publisher's template.</li>
+      <li><strong>Download.</strong> Get a ready-to-edit <strong>Word (.docx)</strong>, a print-ready <strong>PDF</strong>, or a <strong>LaTeX (.tex)</strong> source you can compile on Overleaf.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Turn a thesis into an article</h2>
+    <ol class="steps">
+      <li><strong>Add your thesis.</strong> On the <em>Thesis → Article</em> tab, upload the full document or paste it. Chapter headings (<em>Introduction</em>, <em>Literature Review</em>, <em>Methodology</em>, <em>Results</em>, <em>Conclusion</em>, …) are detected automatically.</li>
+      <li><strong>Choose an article shape.</strong> Pick a built-in template (journal, conference, or review), <em>or</em> upload a sample article and ResearchLens AI mimics its exact section structure.</li>
+      <li><strong>Condense &amp; download.</strong> Pick how aggressively to shorten, click <em>Build article &amp; preview</em> to see the mapped structure, then choose a publisher and download Word, PDF, or LaTeX. Always proofread the result.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Check a paper before you submit</h2>
+    <ol class="steps">
+      <li><strong>Add your paper.</strong> On the <em>Paper Check</em> tab, upload or paste it.</li>
+      <li><strong>Pick the target publisher.</strong> Abstract length, keyword count, and section checks adapt to IEEE, Springer, Elsevier, or a generic style.</li>
+      <li><strong>Read the report.</strong> You get a readiness score plus a grouped checklist of <em>errors</em> (must fix), <em>warnings</em>, and <em>tips</em> — covering missing sections, abstract/keyword length, uncited references, overlong sentences, and AI-sounding wording. Nothing is changed for you; you decide what to fix.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Rewrite AI-sounding text</h2>
+    <ol class="steps">
+      <li><strong>Paste or load text.</strong> On the <em>AI → Human</em> tab, paste your draft, or load a file and pick a single paragraph.</li>
+      <li><strong>Choose a strength.</strong> <em>Light</em> simplifies vocabulary only; <em>Medium</em> also removes filler and splits long sentences; <em>Strong</em> adds contractions for a casual tone. Toggle individual options if you want fine control.</li>
+      <li><strong>Review &amp; reuse.</strong> Click <em>Humanize</em>, read the result, then copy it or download a <code>.txt</code>. Always proofread before submitting.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Tips &amp; notes</h2>
+    <ul class="ticks">
+      <li>Everything runs locally in your browser — your files are never uploaded.</li>
+      <li>For a publisher-perfect PDF, download the <code>.tex</code> and compile it free on <a href="https://overleaf.com" target="_blank" rel="noopener">Overleaf</a>.</li>
+      <li>The <strong>Download PDF</strong> button opens a print view — choose “Save as PDF” as the destination and allow pop-ups.</li>
+      <li>Reading <em>existing</em> PDF files as input needs the full desktop version on <a href="https://github.com/ravi9680/researchlens-ai" target="_blank" rel="noopener">GitHub</a>.</li>
+      <li>The humanizer is a writing aid for your own drafts — not a tool to bypass AI detectors.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= ABOUT ================= -->
+<section id="about" class="panel">
+  <div class="card about-tool">
+    <h2>About ResearchLens AI</h2>
+    <p>ResearchLens AI is a research writing tool that turns plain drafts into properly formatted academic papers, condenses theses into articles, checks papers before submission, and helps rewrite stiff AI-sounding prose into clearer language. It runs in your browser — no account required.</p>
+  </div>
+
+  <div class="card creator">
+    <div class="avatar">RL</div>
+    <div class="creator-body">
+      <h2>About the creator</h2>
+      <p class="creator-name">ResearchLens AI Team</p>
+      <p class="creator-role">Academic paper formatting and research writing assistance.</p>
+      
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Support &amp; feedback</h2>
+    <p>If ResearchLens AI helps your work, share feedback with the team.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Runs locally in your browser — your files never leave your device.
+     Full version (PDF in/out, command line) on <a href="https://github.com/ravi9680/researchlens-ai" target="_blank" rel="noopener">GitHub</a>.</p>
+  
+  <p class="copyright">&copy; 2026 ResearchLens AI Team. All rights reserved.</p>
+</footer>
+
+<!-- third-party libraries (UMD globals) -->
+<script src="https://unpkg.com/mammoth@1.9.0/mammoth.browser.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+<script src="app.js?v=4"></script>
+</body>
+</html>
