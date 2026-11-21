@@ -601,8 +601,27 @@
     return out;
   }
 
-  function buildDocx(paper, publisher) {
-    const D = window.docx;
+  async function ensureDocx() {
+    if (window.docx && window.docx.Document) return window.docx;
+    const srcs = [
+      "https://unpkg.com/docx@8.5.0/build/index.umd.js",
+      "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"
+    ];
+    for (const src of srcs) {
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+        if (window.docx && window.docx.Document) return window.docx;
+      } catch {}
+    }
+    throw new Error("Word export library (docx.js) failed to load. Check your internet connection and try again.");
+  }
+
+  async function buildDocx(paper, publisher) {
+    const D = await ensureDocx();
     const { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType, convertInchesToTwip } = D;
     const FONT = "Times New Roman";
 
