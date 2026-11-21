@@ -16,29 +16,45 @@ function firstPara(content: string) {
   return line || "";
 }
 
-/** Print-ready HTML for the IEEE paper — Times New Roman, A4, two-column body. */
+function romanize(num: number) {
+  let n = Math.max(1, Math.floor(num));
+  const map: Array<[number, string]> = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  let out = "";
+  for (const [v, s] of map) while (n >= v) { out += s; n -= v; }
+  return out;
+}
+
+/** Print-ready HTML for the IEEE paper — closer to PaperForge IEEE output. */
 function buildIeeePrintHtml(content: string, meta: { title: string; authors: string; keywords: string; abstract: string }) {
   const title = meta.title.trim() || firstPara(content).slice(0, 120) || "Untitled research paper";
-  const authorsTxt = meta.authors.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean).join(", ") || "Author";
-  const keywordsTxt = meta.keywords.split(/[,;]+/).map((s) => s.trim()).filter(Boolean).join(", ") || "research";
+  const authorsTxt = splitList(meta.authors).join(",  ") || "Author";
+  const keywordsTxt = splitList(meta.keywords, /[,;]+/).join(", ");
   const abstractTxt = meta.abstract.trim() || firstPara(content);
-  const lines = content
-    .split(/\r\n|\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  const romanMain = /^((?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII)[.)]?\s+[A-Z])/i;
+  const lines = content.split(/\r\n|\n/).map((l) => l.trim()).filter(Boolean);
   const isKnownHeading = /^(abstract|keywords?|index\s+terms?|references?|bibliography|introduction|related\s+work|background|literature\s+review|methodology|methods?|approach|model|architecture|proposed\s+method|experiments?|evaluation|results?|discussion|conclusion|conclusions|future\s+(work|scope)|appendix|appendices|acknowledgements?|research\s+gap|problem\s+statement|implementation)\b/i;
-  const start = lines.findIndex((l) => romanMain.test(l));
-  const body = lines
-    .slice(start >= 0 ? start : 0)
-    .map((p) => {
-      const t = p.trim();
-      if (romanMain.test(t)) return `<h2>${escapeHtml(t)}</h2>`;
-      if (/^[A-Z][.)]\s+\S/.test(t)) return `<h3>${escapeHtml(t)}</h3>`;
-      if (isKnownHeading.test(t)) return `<h2>${escapeHtml(t)}</h2>`;
-      return `<p>${escapeHtml(t)}</p>`;
-    })
-    .join("\n");
+  const romanMain = /^((?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII)[.)]?\s+[A-Z])/i;
+  const isHeading = (l: string) => isKnownHeading.test(l) || romanMain.test(l) || (/^[A-Z][.)]\s+\S/.test(l) && l.length <= 90);
+
+  const absIdx = lines.findIndex((l) => /^abstract\b/i.test(l));
+  const kwIdx = lines.findIndex((l) => /^(keywords?|index\s+terms?)\b/i.test(l));
+  const blockEnd = (start: number) => { for (let i = start; i < lines.length; i++) if (isHeading(lines[i])) return i; return lines.length; };
+  const bodyStart = Math.max(absIdx >= 0 ? blockEnd(absIdx + 1) : 0, kwIdx >= 0 ? blockEnd(kwIdx + 1) : 0);
+
+  let n1 = 0, n2 = 0;
+  const body = lines.slice(bodyStart).map((p) => {
+    const t = p.trim();
+    if (romanMain.test(t) || isKnownHeading.test(t)) {
+      n1 += 1; n2 = 0;
+      const clean = t.replace(/^\s*(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII)[.)]?\s*/i, "").trim();
+      return `<h2 class="lvl1">${romanize(n1)}.&nbsp;&nbsp;${escapeHtml(clean.toUpperCase())}</h2>`;
+    }
+    if (/^[A-Z][.)]\s+\S/.test(t) && t.length <= 90) {
+      n2 += 1;
+      const clean = t.replace(/^[A-Z][.)]\s+/, "").trim();
+      return `<h3 class="lvln">${n1}.${n2}&nbsp;&nbsp;${escapeHtml(clean)}</h3>`;
+    }
+    return `<p class="body-p">${escapeHtml(t)}</p>`;
+  }).join("\n");
 
   return `<!doctype html>
 <html>
@@ -46,28 +62,31 @@ function buildIeeePrintHtml(content: string, meta: { title: string; authors: str
 <meta charset="utf-8">
 <title>${escapeHtml(title)}</title>
 <style>
-  @page { size: A4; margin: 1in; }
-  html, body { font-family: "Times New Roman", Times, serif; color: #000; }
-  body { font-size: 11pt; line-height: 1.5; }
-  h1 { font-size: 18pt; text-align: center; margin: 0 0 12pt; }
-  .authors { text-align: center; font-size: 11pt; margin-bottom: 10pt; }
-  .lbl { font-weight: bold; font-size: 11pt; margin-top: 10pt; }
-  .abs { font-size: 10.5pt; font-style: italic; margin-bottom: 6pt; }
-  .kws { font-size: 10.5pt; margin-bottom: 12pt; }
-  .body { column-count: 2; column-gap: 12mm; text-align: justify; }
-  p { margin: 0 0 8pt; text-align: justify; break-after: avoid; }
-  h2 { font-size: 12pt; margin: 12pt 0 6pt; text-align: justify; }
-  h3 { font-size: 11pt; margin: 10pt 0 4pt; text-align: justify; }
+  @page { size: letter; margin: 0.75in 0.625in; }
+  html, body { font-family: "Times New Roman", Times, serif; color: #000; margin: 0; }
+  body { font-size: 10pt; line-height: 1.25; }
+  .header { text-align: center; margin-bottom: 12pt; }
+  .title { font-size: 20pt; font-weight: bold; margin: 0 0 8pt; }
+  .authors { font-size: 11pt; margin: 0 0 2pt; }
+  .content { column-count: 2; column-gap: 0.25in; text-align: justify; }
+  .abstract, .keywords { font-style: italic; margin: 0 0 6pt; font-size: 9pt; }
+  .abstract b, .keywords b { font-weight: bold; font-style: italic; }
+  h2.lvl1 { font-size: 10pt; font-weight: bold; text-align: center; font-variant: small-caps; margin: 8pt 0 4pt; break-after: avoid; }
+  h3.lvln { font-size: 10pt; font-style: italic; font-weight: bold; margin: 6pt 0 3pt; break-after: avoid; }
+  .body-p { margin: 0 0 6pt; text-align: justify; text-indent: 0.2in; }
 </style>
 </head>
 <body>
-  <h1>${escapeHtml(title)}</h1>
-  <div class="authors">${escapeHtml(authorsTxt)}</div>
-  <div class="lbl">ABSTRACT—</div>
-  <div class="abs">${escapeHtml(abstractTxt)}</div>
-  <div class="lbl">INDEX TERMS—</div>
-  <div class="kws">${escapeHtml(keywordsTxt)}</div>
-  <div class="body">${body}</div>
+  <div class="header">
+    <div class="title">${escapeHtml(title)}</div>
+    <div class="authors">${escapeHtml(authorsTxt)}</div>
+  </div>
+  <div class="content">
+    ${abstractTxt ? `<p class="abstract"><b>Abstract—</b>${escapeHtml(abstractTxt)}</p>` : ""}
+    ${keywordsTxt ? `<p class="keywords"><b>Index Terms—</b>${escapeHtml(keywordsTxt)}</p>` : ""}
+    ${body}
+  </div>
+  <script>window.onload=function(){setTimeout(function(){window.print();},150);};<\/script>
 </body>
 </html>`;
 }
