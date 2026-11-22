@@ -203,7 +203,18 @@
     const t = (text || "").trim();
     if (!t || t.length > 120) return null;
     const m = NUM_HEADING_RE.exec(t);
-    if (m) return m[1] ? (m[1].split(".").length) : 1;
+    if (m) {
+      if (m[1]) return m[1].split(".").length;
+      if (m[3]) return 2; // A. B. C. subsections
+      // Roman numeral - but single chars C,I,V,X can be letter subsections
+      if (m[2] && m[2].length === 1 && /[A-Z]/.test(m[2])) {
+        const title = m[4] || "";
+        const hasLetter = /[a-zA-Z]/.test(title);
+        const isAllCaps = hasLetter && title === title.toUpperCase();
+        if (!isAllCaps) return 2;
+      }
+      return 1;
+    }
     if (t.split(/\s+/).length <= 10 && !/[.,;:]$/.test(t)) {
       const hasLetter = /[a-zA-Z]/.test(t);
       const isUpper = t === t.toUpperCase() && hasLetter;
@@ -342,8 +353,49 @@
       .replace(/[{}]/g, " ");
   }
 
+  function splitCollapsedPaper(raw) {
+    const t = (raw || "").replace(/\r\n?/g, "\n").trim();
+    if (!t) return t;
+    const nl = (t.match(/\n/g) || []).length;
+    if (nl >= 8) return t; // already has structure
+    let s = t;
+    const major = [
+      /(?=(?:\b|(?<=[a-z]))Title\s*[:\-–—]\s*)/gi,
+      /(?=(?:\b|(?<=[a-z]))Authors?\s*[:\-–—]\s*)/gi,
+      /(?=(?:\b|(?<=[a-z]))Abstract\s*[—–\-:]\s*)/gi,
+      /(?=(?:\b|(?<=[a-z]))Keywords?\s*[—–\-:]\s*)/gi,
+      /(?=(?:\b|(?<=[a-z]))Index\s+Terms?\s*[—–\-:]\s*)/gi,
+      /(?=(?:\b|(?<=[a-z]))(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+[A-Z])/g,
+      /(?=(?:\b|(?<=[a-z]))REFERENCES\b)/g,
+      /(?=\[\d+\]\s+[A-Z])/g
+    ];
+    for (const re of major) s = s.replace(re, "\n\n");
+    // Split letter subheadings only before REFERENCES
+    const refIdx = s.search(/\n\nREFERENCES\b/);
+    const splitSubs = (part) => part.replace(/(?=(?:\b|(?<=[a-z.:;]))[A-D]\.\s+[A-Z][a-z])/g, "\n\n");
+    if (refIdx >= 0) s = splitSubs(s.slice(0, refIdx)) + s.slice(refIdx);
+    else s = splitSubs(s);
+    s = s.replace(/\s*(Department of [A-Z])/g, "\n$1");
+    s = s.replace(/((?:Engineering|University|Institute|College|Technology|Science|Sciences|Research))([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*[A-Z])/g, "$1\n$2");
+    // Separate glued heading from body: "I. INTRODUCTIONFor decades..." -> heading + body
+    s = s.replace(/^((?:I{1,3}|IV|V|VI{0,3}|IX|X)\.\s+[A-Z][A-Z\s/&\-:]{2,})([A-Z][a-z].+|[A-Z]\s.+)$/gm, "$1\n\n$2");
+    s = s.replace(/^([A-D]\.\s+[^\n]{5,})$/gm, (line) => {
+      // Split glued body: ")Together..." or "AccessMicro-segmentation divides..."
+      let m = line.match(/^([A-D]\.\s+.+?\))([A-Z][a-z].+)$/);
+      if (m) return m[1] + "\n\n" + m[2];
+      m = line.match(/^([A-D]\.\s+.{10,}?[a-z])([A-Z][a-z]+[\s\-][a-z].+)$/);
+      if (m) return m[1] + "\n\n" + m[2];
+      m = line.match(/^([A-D]\.\s+[A-Z][A-Z\s/&\-:]{2,})([A-Z][a-z].+)$/);
+      if (m) return m[1] + "\n\n" + m[2];
+      return line;
+    });
+    s = s.replace(/\n{3,}/g, "\n\n").trim();
+    return s;
+  }
+
   function textToBlocks(raw, isLatex) {
     if (isLatex) raw = stripLatex(raw);
+    raw = splitCollapsedPaper(raw);
     const blocks = [];
     for (let chunk of raw.split(/\n\s*\n/)) {
       chunk = chunk.replace(/^\n+|\n+$/g, "");
