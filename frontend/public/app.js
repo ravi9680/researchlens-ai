@@ -1571,7 +1571,7 @@
       const report = checkPaper(paper, chkPublisher(), { checkAI: $("chk-ai").checked });
       renderReport(report);
       chkStatus("Done — score " + report.score + "/100. See the report below.", "ok");
-      $("chk-result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      $("chk-result-card").scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     } catch (e) { chkStatus("Error: " + e.message, "warn"); console.error(e); }
   });
 
