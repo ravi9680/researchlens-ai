@@ -1,1 +1,2 @@
 {"rewrites": [{"source": "/(.*)", "destination": "/index.html"}]}
+// Redirect all incoming routes to index.html
