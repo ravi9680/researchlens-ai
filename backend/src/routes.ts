@@ -328,7 +328,7 @@ router.get("/security/summary", (_req, res) => {
     transportSecurity: {
       headers: ["Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "X-DNS-Prefetch-Control"],
       hsts: config.isProduction,
-      csp: "self-only scripts; no inline JS, no third-party origins",
+      csp: "self-hosted app; scripts limited to self + unpkg/jsdelivr (formatter libs), fonts from Google Fonts",
       poweredBy: "disabled",
       cors: "explicit origin allow-list",
     },

@@ -71,20 +71,19 @@ export const config = {
 };
 
 export const securityConfig = {
-  /* Content-Security-Policy. The SPA is fully self-hosted: no CDN scripts,
-   * no inline event handlers, no remote images. `unsafe-inline` is limited to
-   * styles because Tailwind injects a stylesheet and recharts sets inline
-   * style attributes on generated SVG. */
+  /* Content-Security-Policy. The SPA is mostly self-hosted; external origins
+   * are limited to Google Fonts and the CDN scripts used by the static
+   * ResearchLens formatter (mammoth/docx UMD builds, with jsdelivr fallback). */
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "https://unpkg.com", "https://cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "blob:"],
-      fontSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       connectSrc: ["'self'"],
       formAction: ["'self'"],
       upgradeInsecureRequests: isProduction ? [] : null,
