@@ -34,9 +34,3 @@ CREATE TABLE IF NOT EXISTS documents (
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE TABLE IF NOT EXISTS similarity_results (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), document_id UUID REFERENCES documents(id) ON DELETE CASCADE, paper_id UUID REFERENCES papers(id) ON DELETE CASCADE, score FLOAT NOT NULL, section_scores JSONB DEFAULT '{}', matches_json JSONB DEFAULT '[]');
-CREATE TABLE IF NOT EXISTS ingestion_jobs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), domain TEXT DEFAULT '', target_count INT DEFAULT 0,
-  status TEXT DEFAULT 'running', progress INT DEFAULT 0, succeeded INT DEFAULT 0, failed INT DEFAULT 0,
-  duplicates INT DEFAULT 0, log_json JSONB DEFAULT '[]', created_at TIMESTAMPTZ DEFAULT now()
-);
