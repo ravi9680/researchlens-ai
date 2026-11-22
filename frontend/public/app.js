@@ -377,6 +377,8 @@
     else s = splitSubs(s);
     s = s.replace(/\s*(Department of [A-Z])/g, "\n$1");
     s = s.replace(/((?:Engineering|University|Institute|College|Technology|Science|Sciences|Research))([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*[A-Z])/g, "$1\n$2");
+    // Split glued colon-labeled list/table items: "...status.Behavioral and Contextual Telemetry: ..."
+    s = s.replace(/([.;\):])(?=[A-Z][A-Za-z\s/\-]{2,45}:)/g, "$1\n\n");
     // Separate glued heading from body: "I. INTRODUCTIONFor decades..." -> heading + body
     s = s.replace(/^((?:I{1,3}|IV|V|VI{0,3}|IX|X)\.\s+[A-Z][A-Z\s/&\-:]{2,})([A-Z][a-z].+|[A-Z]\s.+)$/gm, "$1\n\n$2");
     s = s.replace(/^([A-D]\.\s+[^\n]{5,})$/gm, (line) => {
